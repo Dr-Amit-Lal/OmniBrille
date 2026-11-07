@@ -107,6 +107,7 @@ public static class PathBoundary
             return true;
         }
 
-        return candidate.StartsWith(root + Path.DirectorySeparatorChar, Comparison);
+        var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, Comparison);
     }
 }

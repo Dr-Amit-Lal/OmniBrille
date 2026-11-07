@@ -1,3 +1,34 @@
+# OmniBrille · My Files
+
+This fork opens to **My Files**, a simple visual map of folders you choose. It adds large readable cards, branches that expand in place, Current Work pins, name search, and a saved local workspace. Files stay in their original locations.
+
+**Custom build in development.** The upstream v1.2.0 installer linked below does **not** include this interface. Build this branch using the commands below. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
+
+## Using My Files
+
+1. Choose **Documents**, **Desktop**, or **Add folder**. You can give a folder a simple display label in Settings before adding it.
+2. Select a folder card to expand or collapse its branch. Use the page buttons for large folders.
+3. Select a file to see its full name and location, then choose **Open file**. Pin frequently used files to **Current Work**.
+4. Use **Home** for the folder overview, **Search** to find a name within connected folders, and **Settings** for larger text, appearance, refresh, and removing folders from the map.
+
+Only explicitly chosen folders are used. The local workspace remembers folder paths, labels, expanded branches, pins, and text size; it does not save file contents or search queries. Removing a folder from the map leaves the files alone. This first version has no automatic filing, file moves, renaming, PDF preview, semantic links, or live filesystem watcher. Use **Refresh files** after changes elsewhere. Map positions are determined automatically, not manually dragged and saved.
+
+## Custom interface preview
+
+Actual Avalonia software renders with synthetic example folders. First launch asks you to choose locations; these screenshots do not come from an installed Windows release.
+
+![My Files home map](docs/assets/screenshots/my-files/my-files-home.png)
+
+[First launch](docs/assets/screenshots/my-files/my-files-first-run.png) · [Expanded Teaching branch](docs/assets/screenshots/my-files/my-files-expanded.png)
+
+See [My Files design and boundaries](docs/my-files.md) for limits, build instructions, and verification scope. Original project attribution and third-party licenses are retained.
+
+---
+
+## Upstream v1.2.0 / Advanced explorer reference
+
+The following original download and capability information describes upstream v1.2.0 and the retained Advanced explorer. Its no-saved-root contract applies to Advanced explorer only; the custom My Files workspace above intentionally remembers selected local folders.
+
 <p align="center">
   <img src="assets/branding/OmniBrille-icon-source.png" width="112" alt="OmniBrille">
 </p>

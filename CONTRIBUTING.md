@@ -13,7 +13,7 @@ dotnet build .\OmniBrille.sln --configuration Release --no-restore
 dotnet run --project .\src\OmniBrille.Desktop --configuration Release --no-build
 ```
 
-Standalone starts without a selected root. Choose non-private demo content when reviewing UI changes or capturing evidence. Source builds do not by themselves contain the installer-owned Voice bundle; use the [Windows packaging workflow](docs/PACKAGING.md) to exercise installed Voice. Do not add runtime downloads or alternate model paths to make a source smoke test pass.
+My Files starts with an empty map on first use and restores its saved local workspace on later launches. Use `--advanced` for the original explorer. Choose non-private demo content when reviewing UI changes or capturing evidence. Source builds do not by themselves contain the installer-owned Voice bundle; use the [Windows packaging workflow](docs/PACKAGING.md) to exercise installed Voice. Do not add runtime downloads or alternate model paths to make a source smoke test pass.
 
 Windows x64 is the distributed runtime target. Ubuntu CI validates build/test behavior; it is not interactive Linux qualification. macOS runtime is unverified. Follow the [compatibility matrix](COMPATIBILITY.md) when making platform or Connected claims.
 

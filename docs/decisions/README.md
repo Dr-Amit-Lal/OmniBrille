@@ -28,3 +28,5 @@ Reconstructed from repository evidence. <!-- only when applicable -->
 ## Rejected alternatives
 ## Evidence
 ```
+
+- [0002: Separate saved standalone file map](0002-standalone-file-map.md) — accepted for the custom My Files fork.

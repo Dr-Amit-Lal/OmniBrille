@@ -26,3 +26,5 @@ Retain a report only for architecture/product boundary changes, serious regressi
 - [`2026-09-04-v1.1.0-voice-start-authority-race.md`](2026-09-04-v1.1.0-voice-start-authority-race.md) — independent candidate review, Voice start cancellation/provider-authority race correction, and the boundary before exact-commit qualification.
 - [`2026-09-04-v1.1.0-runtime-diagnostics-package-exclusion.md`](2026-09-04-v1.1.0-runtime-diagnostics-package-exclusion.md) — exact fresh-install discovery of a runtime-pack diagnostics file, narrow payload exclusion, and strengthened pre/post-install gates.
 - [`2026-09-04-v1.1.0-public-release.md`](2026-09-04-v1.1.0-public-release.md) — exact-commit unsigned qualification, immutable tag and six-asset stable release, public verification, and explicitly retained manual/hardware limits.
+
+- [2026-11-07: My Files custom fork](2026-11-07-my-files-fork.md) — standalone saved map, actual interface previews, automated checks and native Windows limits.

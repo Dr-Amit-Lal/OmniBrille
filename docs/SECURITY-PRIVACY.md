@@ -4,7 +4,7 @@ OmniBrille is local-first and has no telemetry, cloud upload, crash-reporting se
 
 ## Data authority
 
-- Standalone reads only the folder explicitly selected for that session. It does not crawl unrelated drives, persist the selected root, follow directory reparse points recursively, or modify files.
+- My Files reads only explicitly connected local folders and remembers their paths, labels, expanded branches, pins, and text size in a separate local workspace. It does not save queries or file contents, crawl unrelated drives, follow reparse points recursively, or modify files. Advanced explorer retains its single-session selected-root behavior without root persistence. See [My Files](my-files.md).
 - Connected mode reads only opaque nodes and roots authorized by the live OmniSorSe grant. It never treats a displayed path as permission and never falls back to local filesystem access for a connected node.
 - Context nodes, relationships, reasons, ranking strength, evidence, and provenance come only from OmniSorSe. OmniBrille retains at most eight bounded Context snapshots in process memory and never persists an intelligence copy.
 
@@ -35,7 +35,7 @@ The release gate rejects debug symbols, source/test artifacts, databases, logs, 
 
 ## File activation and sound
 
-- Only an explicit double-click, Enter, accessible-list Open action, or equivalent bounded voice command may open a file.
+- My Files opens a selected file only through its explicit Open file button. Advanced explorer also supports explicit double-click, Enter, accessible-list Open, or equivalent bounded voice commands.
 - Standalone activation revalidates the fully qualified selected-root boundary immediately before launch, rejects a reparse-point file or ancestor below the root, and blocks executable, script, installer, control-panel, management-console, shortcut, registry, application-reference, and URL-like extensions. It passes one file path to the Windows shell API without constructing a shell command and immediately releases the returned process handle.
 - Connected display paths are labels only. Connected file opening reports unavailable unless a future protocol supplies an explicit host-authorized operation; there is no filesystem fallback.
 - Interaction sounds are generated locally in memory, contain no user data, do not communicate a unique state, and are governed by one obvious persisted master switch. Muting releases playback resources and device failure cannot change session outcomes.

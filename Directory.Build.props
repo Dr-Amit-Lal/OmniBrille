@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <VersionPrefix>1.2.0</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <VersionSuffix>myfiles.1</VersionSuffix>
     <AssemblyVersion>1.2.0.0</AssemblyVersion>
     <FileVersion>1.2.0.0</FileVersion>
     <Title>OmniBrille</Title>
@@ -10,7 +10,7 @@
     <Authors>OmniBrille Contributors</Authors>
     <Company>OmniBrille Contributors</Company>
     <Copyright>Copyright (c) 2026 OmniBrille Contributors</Copyright>
-    <RepositoryUrl>https://github.com/nishdel/OmniBrille</RepositoryUrl>
+    <RepositoryUrl>https://github.com/Dr-Amit-Lal/OmniBrille</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Nullable>enable</Nullable>

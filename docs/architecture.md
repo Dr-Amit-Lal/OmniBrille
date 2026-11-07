@@ -2,6 +2,26 @@
 
 > **Authority:** current OmniBrille subsystem, ownership, state, and flow model. Stage-specific timings and installed-workflow narratives are explicitly historical evidence, not active architecture or universal guarantees.
 
+## Custom My Files entry point
+
+This fork's ordinary launch now opens `MyFilesWindow`, a standalone native-control map. `--advanced` and `--omnisorse-handoff` retain `MainWindow` and the original `ExplorerSession`. The existing component descriptions below apply to that advanced/connected subsystem unless stated otherwise.
+
+`MyFilesSession` exclusively owns the custom map's selected roots, expanded branches, bounded directory snapshots/pages, selection, pins, search, cancellation and generation checks. It reuses `FileSystemExplorerProvider` per selected root and `ShellFileActivationService` for explicit file opening. `FileMapPathGuard` checks ordinary ancestors including the root before restored reads and file activation. Native Avalonia buttons project nodes and provide keyboard/automation invocation; drawn connectors never acquire data or authorize actions.
+
+`JsonFileMapWorkspaceStore` persists a separate versioned local workspace, including selected local roots, labels, expansion, pins and text size. This is an intentional persistence change in the fork. It never contains connected IDs, grants, content, queries or transcripts. The original `JsonVisualPreferencesStore` contract is unchanged. See [My Files](my-files.md) and [ADR 0002](decisions/0002-standalone-file-map.md).
+
+```mermaid
+flowchart TD
+  Launch[Launch] --> Choice{Handoff or advanced?}
+  Choice -->|Yes| Advanced[Existing MainWindow]
+  Choice -->|No| Simple[MyFilesWindow]
+  Simple --> Session[MyFilesSession]
+  Session --> Guard[Local path validation]
+  Guard --> Provider[Filesystem provider]
+  Session --> Store[Local workspace store]
+  Session --> Open[Explicit file activation]
+```
+
 ## Status and goals
 
 This document describes the v1.2.0 source architecture: an independently packaged Standalone Structure explorer and compatibility-dependent Connected Structure/Context/Hybrid explorer, plus optional click-to-toggle local Voice. Windows x64 Standalone remains the public support contract. The release includes actionable Trail destinations, bounded descendant previews, revised pointer/layout/label behavior, and quiet-completion for Voice. Explorer Protocol v1, server-authored Context, the pinned installer-owned English voice bundle, and existing persistence boundaries remain unchanged. The [issue audit](runs/2026-09-11-github-issue-audit.md) records implementation and regression evidence; native visual, control/transition, motion, microphone/noise, and sound-character acceptance remain separate from automated qualification.

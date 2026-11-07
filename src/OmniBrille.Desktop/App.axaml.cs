@@ -12,10 +12,9 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow(
-                Program.StartupRoot,
-                Program.StartupTheme,
-                Program.OmniSorSeHandoffEndpoint);
+            desktop.MainWindow = Program.OmniSorSeHandoffEndpoint is not null || Program.UseAdvancedExplorer
+                ? new MainWindow(Program.StartupRoot, Program.StartupTheme, Program.OmniSorSeHandoffEndpoint)
+                : new MyFilesWindow(Program.StartupRoot, Program.StartupTheme);
         }
 
         base.OnFrameworkInitializationCompleted();
