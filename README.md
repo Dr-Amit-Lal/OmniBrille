@@ -2,7 +2,7 @@
 
 This fork opens to **My Files**, a simple visual map of folders you choose. It adds large readable cards, branches that expand in place, Current Work pins, name search, and a saved local workspace. Files stay in their original locations.
 
-**Custom build in development.** The upstream v1.2.0 installer linked below does **not** include this interface. Build this branch using the commands below. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
+**Custom preview: `1.2.0-myfiles.1`.** The upstream v1.2.0 installer linked below does **not** include this interface. A [Windows installer ZIP](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366/artifacts/13594679261) is available from the passing GitHub Actions run through November 21, 2026 (GitHub sign-in required). It is unsigned and has not undergone a manual installed-Windows acceptance check. You can also build this branch using the commands below. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
 
 ## Using My Files
 

@@ -28,7 +28,7 @@ This is source version `1.2.0-myfiles.1`. It is not an installed or signed Windo
 
 ## Hosted verification after delivery
 
-[GitHub CI run42425057366](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366), on source commit `6fa79751e0d005aa6dd14914f309cbea8d1fc54d`, passed formatting, Release build, complete tests, documentation checks and the dependency audit on both Windows and Ubuntu. Ubuntu logs confirm323 ordinary and80 headless tests passed, with no skipped tests. This resolves the local named-pipe restriction and timing-test uncertainty above. The Windows installer packaging step was still running when this verification note was recorded; no installed lifecycle or signed release is claimed.
+[GitHub CI run42425057366](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366), on source commit `6fa79751e0d005aa6dd14914f309cbea8d1fc54d`, passed formatting, Release build, complete tests, documentation checks and the dependency audit on both Windows and Ubuntu. Ubuntu logs confirm323 ordinary and80 headless tests passed, with no skipped tests. This resolves the local named-pipe restriction and timing-test uncertainty above. The Windows installer packaging step also passed. Ubuntu passed323 ordinary and80 headless tests. Windows passed319 ordinary tests with4 skipped tests, plus80 headless tests. The unsigned installer is `OmniBrille-1.2.0-myfiles.1-win-x64-setup.exe`, SHA-256 `1397A8D13D7F51250BAF9A374678156419ED99C6C5B6BBAEDF1B5A58BDB2C081`. Its [Actions artifact](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366/artifacts/13594679261) is retained through November 21, 2026. No installed lifecycle or signed release is claimed.
 
 ## Not verified
 
