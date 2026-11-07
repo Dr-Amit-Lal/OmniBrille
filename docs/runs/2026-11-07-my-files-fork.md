@@ -26,6 +26,10 @@ This is source version `1.2.0-myfiles.1`. It is not an installed or signed Windo
 - Changed C# files passed standalone whitespace-format verification. Full solution `dotnet format` could not load its named-pipe build host in this environment; build analyzers still ran normally.
 - Independent source review identified and verified fixes for stale reveal/selection, page restoration, page-cache growth, pager focus, card heights, Settings background actions and Back semantics.
 
+## Hosted verification after delivery
+
+[GitHub CI run42425057366](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366), on source commit `6fa79751e0d005aa6dd14914f309cbea8d1fc54d`, passed formatting, Release build, complete tests, documentation checks and the dependency audit on both Windows and Ubuntu. Ubuntu logs confirm323 ordinary and80 headless tests passed, with no skipped tests. This resolves the local named-pipe restriction and timing-test uncertainty above. The Windows installer packaging step was still running when this verification note was recorded; no installed lifecycle or signed release is claimed.
+
 ## Not verified
 
 Native Windows installation, actual file-association launching, high DPI, Narrator, GPU rendering, physical input behavior, voice hardware, a live OmniSorSe host and a signed/distributed installer. The software screenshots are not a substitute for those checks. No claim of accessibility certification is made.
