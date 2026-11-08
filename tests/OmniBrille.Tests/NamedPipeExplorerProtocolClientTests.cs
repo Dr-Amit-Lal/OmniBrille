@@ -129,12 +129,14 @@ public sealed class NamedPipeExplorerProtocolClientTests
         var server = ServeHandoffAsync(
             handoff,
             JsonSerializer.SerializeToUtf8Bytes(grant, ExplorerProtocolSerialization.CreateOptions()));
-        var receiver = new NamedPipeSessionGrantReceiver(TimeSpan.FromMilliseconds(250));
+        // Successful I/O uses the production deadline; only the expected replay failure needs a short wait.
+        var receiver = new NamedPipeSessionGrantReceiver();
 
         Assert.Equal(grant, await receiver.ReceiveAsync(handoff, CancellationToken.None));
         await server;
+        var replayReceiver = new NamedPipeSessionGrantReceiver(TimeSpan.FromMilliseconds(250));
         await Assert.ThrowsAsync<ExplorerProtocolTimeoutException>(() =>
-            receiver.ReceiveAsync(handoff, CancellationToken.None));
+            replayReceiver.ReceiveAsync(handoff, CancellationToken.None));
     }
 
     [Theory]

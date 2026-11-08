@@ -1177,10 +1177,13 @@ public sealed class MainWindowHeadlessTests
             $"alloc={active.RenderAllocatedBytes:N0} B, labels={active.Labels}");
     }
 
-    [AvaloniaFact]
-    public async Task SearchHighlight_ReducedEffectsLowersDecorativeRenderCost()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SearchHighlight_ReducedEffectsOmitsEdgeGlowsWithoutChangingScene(bool light)
     {
         using var window = CreateWindow(out var session, out _);
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
         window.Show();
         var root = Path.Combine(Path.GetTempPath(), "OmniBrilleReducedEffectsProfile");
         var provider = new DenseProvider(root, 180);
@@ -1203,10 +1206,13 @@ public sealed class MainWindowHeadlessTests
 
         var reduced = graph.Diagnostics;
         Assert.Equal(full.Nodes, reduced.Nodes);
+        Assert.Equal(full.Edges, reduced.Edges);
         Assert.Equal(full.Labels, reduced.Labels);
-        Assert.True(reduced.EdgeDuration < full.EdgeDuration);
+        Assert.True(full.EdgeGlowDrawCalls > 0);
+        Assert.Equal(0, reduced.EdgeGlowDrawCalls);
         _output.WriteLine(
-            $"search-effects: full={full.LastRenderDuration.TotalMilliseconds:0.000} ms, " +
+            $"search-effects ({(light ? "Light" : "Nebula")}): glows={full.EdgeGlowDrawCalls}/{reduced.EdgeGlowDrawCalls}, " +
+            $"full={full.LastRenderDuration.TotalMilliseconds:0.000} ms, " +
             $"reduced={reduced.LastRenderDuration.TotalMilliseconds:0.000} ms, " +
             $"full-edge={full.EdgeDuration.TotalMilliseconds:0.000} ms, " +
             $"reduced-edge={reduced.EdgeDuration.TotalMilliseconds:0.000} ms");

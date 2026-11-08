@@ -33,7 +33,10 @@ public sealed record SceneDiagnostics(
     TimeSpan LabelDrawDuration,
     long RenderAllocatedBytes,
     int TextCacheEntries,
-    int ResourceCacheEntries);
+    int ResourceCacheEntries)
+{
+    public int EdgeGlowDrawCalls { get; init; }
+}
 
 public sealed class GraphSceneControl : Control
 {
@@ -114,6 +117,7 @@ public sealed class GraphSceneControl : Control
     private TimeSpan _labelDrawDuration;
     private long _renderAllocatedBytes;
     private int _renderedLabelCount;
+    private int _edgeGlowDrawCalls;
     private ScenePalette? _cachedPalette;
     private double _cachedRenderScaling;
 
@@ -228,7 +232,10 @@ public sealed class GraphSceneControl : Control
         _labelDrawDuration,
         _renderAllocatedBytes,
         _textCache.Count,
-        _brushCache.Count + _penCache.Count);
+        _brushCache.Count + _penCache.Count)
+    {
+        EdgeGlowDrawCalls = _edgeGlowDrawCalls,
+    };
 
     internal bool ShouldAnimateMotion => !_reducedMotion && _motionAllowed && _neighborhood is not null;
 
@@ -349,6 +356,7 @@ public sealed class GraphSceneControl : Control
         var renderClock = Stopwatch.StartNew();
         var allocatedBytesBefore = GC.GetAllocatedBytesForCurrentThread();
         _labelPreparationDuration = TimeSpan.Zero;
+        _edgeGlowDrawCalls = 0;
         base.Render(context);
         var palette = ActualThemeVariant == ThemeVariant.Light ? ScenePalette.Light : ScenePalette.Dark;
         EnsureCacheContext(palette);
@@ -828,7 +836,7 @@ public sealed class GraphSceneControl : Control
                 var strength = Math.Clamp((edge.Relationship?.Strength ?? 50) / 100d, 0.35, 1);
                 if (!ReducedEffects && emphasized)
                 {
-                    context.DrawLine(
+                    DrawEdgeGlow(context,
                         Pen(palette.ContextEdgeGlow, ToByte(58 * opacity), 5),
                         start,
                         end);
@@ -860,7 +868,7 @@ public sealed class GraphSceneControl : Control
                     Math.Min(sourcePresentation.EdgeMultiplier, targetPresentation.EdgeMultiplier));
                 if (!ReducedEffects && emphasized)
                 {
-                    context.DrawLine(Pen(palette.Selection, ToByte(28 * opacity), 3), start, end);
+                    DrawEdgeGlow(context, Pen(palette.Selection, ToByte(28 * opacity), 3), start, end);
                 }
                 context.DrawLine(
                     Pen(emphasized ? palette.Selection : accent,
@@ -872,7 +880,7 @@ public sealed class GraphSceneControl : Control
 
             if (!ReducedEffects && (edgeBand <= 1 || emphasized))
             {
-                context.DrawLine(
+                DrawEdgeGlow(context,
                     Pen(
                         emphasized ? palette.Selection : palette.EdgeGlow,
                         ToByte((emphasized ? 52 : 26) * opacity * Math.Max(sourcePresentation.GlowMultiplier, targetPresentation.GlowMultiplier)),
@@ -903,6 +911,12 @@ public sealed class GraphSceneControl : Control
                 emphasized || edgeBand <= 1 ? 2.1 : 1.2,
                 emphasized || edgeBand <= 1 ? 2.1 : 1.2);
         }
+    }
+
+    private void DrawEdgeGlow(DrawingContext context, Pen pen, Point start, Point end)
+    {
+        context.DrawLine(pen, start, end);
+        _edgeGlowDrawCalls++;
     }
 
     private static void DrawDashedLine(
