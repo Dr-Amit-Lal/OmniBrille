@@ -11,7 +11,7 @@ Continue the approved Nebulux preview through source implementation and a fresh 
 - Root order controls accent color and descendants inherit it. Color is an orientation cue, not an inferred content relationship.
 - Kept native buttons and keyboard/automation actions. Selection uses a tinted surface; focus has a distinct high-contrast ring. Increased card space for three-line extra-large labels.
 - Preserved explicit file opening, pins, saved folder state, bounded search and provider/path guards. No files are moved or organized by the theme.
-- Versioned this custom preview `1.2.0-myfiles.2`; retained upstream MIT and third-party attribution and the existing per-user installer machinery.
+- Versioned this custom preview `1.2.0-myfiles.3`; retained upstream MIT and third-party attribution and the existing per-user installer machinery.
 
 ## Verified locally
 
@@ -24,7 +24,7 @@ Continue the approved Nebulux preview through source implementation and a fresh 
 
 ## Hosted verification
 
-Pending exact-commit Windows/Ubuntu CI and installer packaging. Completion evidence will be added after the hosted run returns; no successful installer result is claimed by this pending record.
+The initial version `1.2.0-myfiles.2` passed [Windows and Ubuntu CI](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42452753782): Ubuntu 323 ordinary + 94 headless passes; Windows 319 ordinary + 94 headless passes with four platform-specific skips. Formatting, docs, dependency audit and installer build passed. Downloaded ZIP and installer SHA-256 matched the artifact, sidecar and manifest. Inspection found the inherited support/source URLs still pointed at the upstream project. They were corrected to the custom fork and the preview version advanced to `1.2.0-myfiles.3` for a fresh package. Final exact-commit build evidence and the download will be retained in [PR #1](https://github.com/Dr-Amit-Lal/OmniBrille/pull/1), which supersedes this source checkpoint. Main remains unchanged pending the owner's merge decision.
 
 ## Not verified
 
@@ -38,6 +38,6 @@ Repository state contradicted the earlier conversational report of a theme updat
 
 Updated README, My Files behavior, architecture and packaging version guidance; added current software screenshots and this report. Existing interaction/provider/authority diagrams remain valid. No schema or protocol change.
 
-Repository: `Dr-Amit-Lal/OmniBrille`. Work branch: `feature/nebulux-my-files`, based on clean `a1e92bd`. No pre-existing user changes were present or overwritten. Source integration and hosted installer results remain pending in this checkpoint.
+Repository: `Dr-Amit-Lal/OmniBrille`. Work branch: `feature/nebulux-my-files`, based on clean `a1e92bd`. No pre-existing user changes were present or overwritten. The implementation is saved on the work branch and reviewed in PR #1. The initial hosted build passed; the metadata correction requires a fresh build.
 
 Status: Partial. Source and local UI validation are complete; hosted checks and installer delivery are the remaining work.

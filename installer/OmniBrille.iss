@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.2.0-myfiles.2"
+  #define AppVersion "1.2.0-myfiles.3"
 #endif
 #ifndef NumericVersion
   #define NumericVersion "1.2.0.0"
@@ -14,7 +14,7 @@
 #define AppName "OmniBrille"
 #define AppExeName "OmniBrille.exe"
 #define AppPublisher "OmniBrille Contributors"
-#define AppUrl "https://github.com/nishdel/OmniBrille"
+#define AppUrl "https://github.com/Dr-Amit-Lal/OmniBrille"
 
 [Setup]
 AppId={{B191365D-A12A-4931-99DC-A19445B91651}

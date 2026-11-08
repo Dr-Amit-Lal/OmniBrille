@@ -250,7 +250,7 @@ function Assert-PackagedContents {
     }
     if ($manifest.schemaVersion -ne 5 -or
         $manifest.projectLicenseExpression -ne 'MIT' -or
-        $manifest.sourceUrl -ne "https://github.com/nishdel/OmniBrille/tree/$($manifest.commitSha)") {
+        $manifest.sourceUrl -ne "https://github.com/Dr-Amit-Lal/OmniBrille/tree/$($manifest.commitSha)") {
         throw 'Release manifest schema, MIT project license, or source metadata is invalid.'
     }
     if ($manifest.voiceBundle.manifestSha256 -ne (Get-FileHash -LiteralPath $voiceManifestPath -Algorithm SHA256).Hash -or

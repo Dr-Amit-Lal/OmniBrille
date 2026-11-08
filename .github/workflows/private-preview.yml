@@ -194,7 +194,7 @@ jobs:
           }
           if ($manifest.schemaVersion -ne 5 -or
               $manifest.projectLicenseExpression -ne 'MIT' -or
-              $manifest.sourceUrl -ne "https://github.com/nishdel/OmniBrille/tree/${{ github.sha }}") {
+              $manifest.sourceUrl -ne "https://github.com/Dr-Amit-Lal/OmniBrille/tree/${{ github.sha }}") {
             throw 'Manifest schema, project license, or source/provenance URL does not match the release commit.'
           }
           if ($installer.Name -ne $manifest.installer.fileName -or

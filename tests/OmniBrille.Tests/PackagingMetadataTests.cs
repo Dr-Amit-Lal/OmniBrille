@@ -24,10 +24,10 @@ public sealed class PackagingMetadataTests
         var installer = File.ReadAllText(Path.Combine(root, "installer", "OmniBrille.iss"));
 
         Assert.Equal("1.2.0", document.Descendants("VersionPrefix").Single().Value);
-        Assert.Equal("myfiles.2", document.Descendants("VersionSuffix").Single().Value);
+        Assert.Equal("myfiles.3", document.Descendants("VersionSuffix").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("FileVersion").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("AssemblyVersion").Single().Value);
-        Assert.Contains("#define AppVersion \"1.2.0-myfiles.2\"", installer, StringComparison.Ordinal);
+        Assert.Contains("#define AppVersion \"1.2.0-myfiles.3\"", installer, StringComparison.Ordinal);
         Assert.Contains("#define NumericVersion \"1.2.0.0\"", installer, StringComparison.Ordinal);
         Assert.Equal("OmniBrille", document.Descendants("Product").Single().Value);
         Assert.Equal("MIT", document.Descendants("PackageLicenseExpression").Single().Value);

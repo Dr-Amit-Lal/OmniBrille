@@ -1,6 +1,6 @@
 # Windows packaging and public releases
 
-**Custom fork:** source version is `1.2.0-myfiles.2`. The historical upstream v1.2.0 package details below do not qualify this fork. Custom workspace state and defaults are described in [My Files](my-files.md); native Windows installer acceptance remains outstanding.
+**Custom fork:** source version is `1.2.0-myfiles.3`. The historical upstream v1.2.0 package details below do not qualify this fork. Custom workspace state and defaults are described in [My Files](my-files.md); native Windows installer acceptance remains outstanding.
 
 ## Supported package
 
