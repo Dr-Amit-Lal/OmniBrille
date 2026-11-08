@@ -76,7 +76,7 @@ public sealed class MainWindowHeadlessTests
         foreach (var name in new[]
         {
             "ChooseFolderButton", "BackButton", "UpButton", "HistoryButton", "SearchToggleButton",
-            "AccessibleListButton", "SettingsButton", "SoundButton", "VoiceButton", "MinimizeWindowButton",
+            "AccessibleListButton", "SettingsButton", "InterfaceToggleButton", "VoiceButton", "MinimizeWindowButton",
             "MaximizeWindowButton", "CloseWindowButton",
         })
         {
@@ -595,8 +595,7 @@ public sealed class MainWindowHeadlessTests
         var session = new ExplorerSession();
         var store = new MemoryPreferencesStore();
         var activation = new RecordingFileActivationService();
-        using var sound = new RecordingSoundService();
-        using var window = new MainWindow(session, store, fileActivation: activation, interactionSound: sound);
+        using var window = new MainWindow(session, store, fileActivation: activation);
         window.Show();
         var root = Path.Combine(Path.GetTempPath(), "OmniBrilleFileOpenRoot");
         var file = Entry(Path.Combine(root, "report.txt"), ExplorerNodeKind.File);
@@ -612,26 +611,106 @@ public sealed class MainWindowHeadlessTests
 
         Assert.Equal(root, activation.AccessRoot);
         Assert.Equal(file.Path, activation.Path);
-        Assert.Contains(InteractionSoundCue.FileOpen, sound.Cues);
     }
 
     [AvaloniaFact]
-    public void SoundMute_IsObviousPersistedAndStopsCueWork()
+    public async Task HiddenInterface_KeepsSearchUsableAcrossUpdatesAndRestoresByKeyboard()
+    {
+        using var window = CreateWindow(out var session, out _);
+        window.Show();
+        var root = Path.Combine(Path.GetTempPath(), "OmniBrilleFocusMode");
+        var child = Entry(Path.Combine(root, "match.txt"), ExplorerNodeKind.File);
+        var provider = new ImmediateProvider(root, child);
+        await session.OpenRootAsync(provider, provider);
+        var toggle = window.FindControl<Button>("InterfaceToggleButton")!;
+        toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var search = window.FindControl<TextBox>("SearchBox")!;
+        Assert.True(search.IsFocused);
+        Assert.Equal("Show controls", AutomationProperties.GetName(toggle));
+
+        session.SelectNode(child.Id);
+        window.Width = 820;
+        window.Height = 520;
+        search.Text = "match";
+        window.FindControl<Button>("SearchButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await WaitUntilAsync(() => session.SearchResult is not null);
+        using (window.CaptureRenderedFrame()) { }
+        Assert.Equal("match", session.SearchQuery);
+        Assert.True(window.FindControl<Border>("SearchResultsPanel")!.IsVisible);
+        foreach (var name in new[] { "CustomTitleBar", "NavigationHud", "ZoomHud", "FocusHud", "ModeHud", "UtilityControls", "DetailsPanel", "VoiceHud", "StatusHud" })
+        {
+            Assert.False(window.FindControl<Control>(name)!.IsEffectivelyVisible, name);
+        }
+        Assert.True(search.IsEffectivelyVisible);
+        Assert.True(toggle.IsEffectivelyVisible);
+        Assert.True(toggle.Bounds.Width >= 44 && toggle.Bounds.Height >= 44);
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Assert.Null(session.SearchResult);
+        Assert.True(search.IsEffectivelyVisible);
+        Assert.True(search.IsFocused);
+        window.KeyPress(Key.H, RawInputModifiers.Control, PhysicalKey.H, "h");
+        Assert.True(window.FindControl<Border>("NavigationHud")!.IsVisible);
+        Assert.Equal("Hide controls", AutomationProperties.GetName(toggle));
+        Assert.True(toggle.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public async Task HiddenInterface_PreservesQueryAndSelectionAndAllowsAccessibleList()
+    {
+        using var window = CreateWindow(out var session, out _);
+        window.Show();
+        var root = Path.Combine(Path.GetTempPath(), "OmniBrilleFocusSelection");
+        var child = Entry(Path.Combine(root, "match.txt"), ExplorerNodeKind.File);
+        var provider = new ImmediateProvider(root, child);
+        await session.OpenRootAsync(provider, provider);
+        session.SelectNode(child.Id);
+        await session.SearchAsync("match");
+        var scene = session.Neighborhood;
+        var selection = session.SelectedNode;
+        var results = session.SearchResult;
+        window.FindControl<Button>("InterfaceToggleButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Same(scene, session.Neighborhood);
+        Assert.Same(selection, session.SelectedNode);
+        Assert.Same(results, session.SearchResult);
+        window.KeyPress(Key.L, RawInputModifiers.Control | RawInputModifiers.Shift, PhysicalKey.L, "l");
+        Assert.True(window.FindControl<Border>("AccessibleListPanel")!.IsVisible);
+        Assert.True(window.FindControl<Border>("NavigationHud")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task HiddenInterface_EscapeInSearchStillCancelsActiveMicrophone()
     {
         var session = new ExplorerSession();
         var store = new MemoryPreferencesStore();
-        using var sound = new RecordingSoundService();
-        using var window = new MainWindow(session, store, interactionSound: sound);
+        using var capture = new FakeVoiceCapture();
+        using var speech = new FakeSpeechRecognition("use light mode");
+        using var window = new MainWindow(session, store, audioCapture: capture, speechRecognition: speech);
         window.Show();
-        var button = window.FindControl<Button>("SoundButton")!;
+        window.FindControl<Button>("VoiceButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await WaitUntilAsync(() => window.Voice.State == VoiceCapabilityState.Listening);
+        window.FindControl<Button>("InterfaceToggleButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(window.FindControl<TextBox>("SearchBox")!.IsFocused);
+        Assert.True(window.FindControl<Border>("VoiceHud")!.IsVisible);
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        await WaitUntilAsync(() => !window.Voice.IsActive);
+        Assert.False(window.FindControl<Border>("VoiceHud")!.IsVisible);
+        Assert.True(window.FindControl<TextBox>("SearchBox")!.IsEffectivelyVisible);
+    }
 
-        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-        Assert.False(window.Preferences.SoundEnabled);
-        Assert.False(store.Saved!.SoundEnabled);
-        Assert.False(sound.Enabled);
-        Assert.Equal("SOUND OFF", button.Content);
-        Assert.Empty(sound.Cues);
+    [AvaloniaFact]
+    public async Task HiddenInterface_DoesNotReviveWelcomeOrEmptyFolderControls()
+    {
+        using var window = CreateWindow(out var session, out _);
+        window.Show();
+        window.FindControl<Button>("InterfaceToggleButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(window.FindControl<Border>("WelcomePanel")!.IsVisible);
+        var root = Path.Combine(Path.GetTempPath(), "OmniBrilleHiddenEmpty");
+        var provider = new SnapshotEvidenceProvider(root, new ExplorerDirectorySnapshot(Entry(root, ExplorerNodeKind.Folder), []));
+        await session.OpenRootAsync(provider, provider);
+        Assert.False(window.FindControl<Border>("StructureEmptyPanel")!.IsVisible);
+        Assert.True(window.FindControl<Border>("SearchEditor")!.IsVisible);
+        window.FindControl<Button>("InterfaceToggleButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(window.FindControl<Border>("StructureEmptyPanel")!.IsVisible);
     }
 
     [AvaloniaFact]
@@ -1626,8 +1705,11 @@ public sealed class MainWindowHeadlessTests
         graph.SetScene(session.Neighborhood, null, null, false);
         using (window.CaptureRenderedFrame()) { }
         var node = new RadialGraphLayout().Layout(session.Neighborhood!)[folder.Id];
-        var point = graph.TranslatePoint(new Point(graph.Bounds.Width / 2 + node.X * (graph.Bounds.Width - 40) * 0.66,
-            170 + (graph.Bounds.Height - 240) / 2 + node.Y * (graph.Bounds.Height - 240) * 0.68), window)!.Value;
+        var viewport = new Rect(graph.ScenePadding.Left, graph.ScenePadding.Top,
+            graph.Bounds.Width - graph.ScenePadding.Left - graph.ScenePadding.Right,
+            graph.Bounds.Height - graph.ScenePadding.Top - graph.ScenePadding.Bottom);
+        var point = graph.TranslatePoint(new Point(viewport.Center.X + node.X * viewport.Width * 0.66,
+            viewport.Center.Y + node.Y * viewport.Height * 0.68), window)!.Value;
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
         await WaitUntilAsync(() => session.CurrentPath == folder.Path);
@@ -1658,8 +1740,11 @@ public sealed class MainWindowHeadlessTests
             graph.SetScene(session.Neighborhood, session.SelectedNode?.Id, null, false);
             using (window.CaptureRenderedFrame()) { }
             var node = new RadialGraphLayout().Layout(session.Neighborhood!)[nodeId];
-            var point = graph.TranslatePoint(new Point(graph.Bounds.Width / 2 + node.X * (graph.Bounds.Width - 40) * 0.66,
-                170 + (graph.Bounds.Height - 240) / 2 + node.Y * (graph.Bounds.Height - 240) * 0.68), window)!.Value;
+            var viewport = new Rect(graph.ScenePadding.Left, graph.ScenePadding.Top,
+                graph.Bounds.Width - graph.ScenePadding.Left - graph.ScenePadding.Right,
+                graph.Bounds.Height - graph.ScenePadding.Top - graph.ScenePadding.Bottom);
+            var point = graph.TranslatePoint(new Point(viewport.Center.X + node.X * viewport.Width * 0.66,
+                viewport.Center.Y + node.Y * viewport.Height * 0.68), window)!.Value;
             graph.RaiseEvent(new PointerPressedEventArgs(graph, new Pointer(1, PointerType.Mouse, true), window, point,
                 (ulong)(count * 100), new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed), KeyModifiers.None, count));
         }
@@ -1805,6 +1890,7 @@ public sealed class MainWindowHeadlessTests
     [InlineData("nebula-search", false, true, false)]
     [InlineData("nebula-large-text", false, false, false)]
     [InlineData("nebula-spatial", false, false, false)]
+    [InlineData("nebula-search-only", false, false, false)]
     [InlineData("preview-dark", false, false, false)]
     [InlineData("preview-light", true, false, false)]
     [InlineData("dense-dark", false, true, false)]
@@ -1820,7 +1906,7 @@ public sealed class MainWindowHeadlessTests
         window.Show();
         var root = Path.Combine(Path.GetTempPath(), "OmniBrille-Demo");
         var focus = Entry(root, ExplorerNodeKind.Folder) with { Name = "Workspace" };
-        var folderNames = name == "nebula-spatial"
+        var folderNames = name is "nebula-spatial" or "nebula-search-only"
             ? new[] { "Teaching", "Research", "Projects", "Personal", "Archive", "Presentations", "Courses", "Photography", "Community", "Writing", "Data", "Business", "Design", "Resources", "Travel", "Notes" }
             : EvidenceFolders;
         var folders = folderNames.Select(item => Entry(Path.Combine(root, item), ExplorerNodeKind.Folder)).ToArray();
@@ -1832,6 +1918,7 @@ public sealed class MainWindowHeadlessTests
         var provider = new SnapshotEvidenceProvider(root, new ExplorerDirectorySnapshot(focus, children, Previews: previews));
         await session.OpenRootAsync(provider, provider);
         var graph = window.FindControl<GraphSceneControl>("GraphScene")!;
+        if (name == "nebula-search-only") { window.FindControl<Button>("InterfaceToggleButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); }
         if (name == "nebula-large-text") { graph.TextScale = 2; }
         if (name == "nebula-search")
         {
@@ -2022,25 +2109,6 @@ public sealed class MainWindowHeadlessTests
             AccessRoot = accessRoot;
             Path = path;
             return Task.FromResult(FileActivationResult.Opened);
-        }
-    }
-
-    private sealed class RecordingSoundService : IInteractionSoundService
-    {
-        public bool Enabled { get; set; } = true;
-
-        public List<InteractionSoundCue> Cues { get; } = [];
-
-        public void Play(InteractionSoundCue cue)
-        {
-            if (Enabled)
-            {
-                Cues.Add(cue);
-            }
-        }
-
-        public void Dispose()
-        {
         }
     }
 

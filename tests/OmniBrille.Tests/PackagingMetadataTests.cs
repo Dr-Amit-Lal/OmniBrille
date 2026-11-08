@@ -17,17 +17,17 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void CentralVersion_IdentifiesMyFilesPreviewAndMatchesInstallerFallback()
+    public void CentralVersion_IdentifiesSpatialPreviewAndMatchesInstallerFallback()
     {
         var root = FindRepositoryRoot();
         var document = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
         var installer = File.ReadAllText(Path.Combine(root, "installer", "OmniBrille.iss"));
 
         Assert.Equal("1.2.0", document.Descendants("VersionPrefix").Single().Value);
-        Assert.Equal("nebula.1", document.Descendants("VersionSuffix").Single().Value);
+        Assert.Equal("nebula.3", document.Descendants("VersionSuffix").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("FileVersion").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("AssemblyVersion").Single().Value);
-        Assert.Contains("#define AppVersion \"1.2.0-nebula.1\"", installer, StringComparison.Ordinal);
+        Assert.Contains("#define AppVersion \"1.2.0-nebula.3\"", installer, StringComparison.Ordinal);
         Assert.Contains("#define NumericVersion \"1.2.0.0\"", installer, StringComparison.Ordinal);
         Assert.Equal("OmniBrille", document.Descendants("Product").Single().Value);
         Assert.Equal("MIT", document.Descendants("PackageLicenseExpression").Single().Value);

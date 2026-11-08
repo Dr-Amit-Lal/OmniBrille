@@ -12,6 +12,9 @@ Historical decisions reconstructed after the fact must say **Reconstructed from 
 | [0002](0002-bounded-deterministic-scenes.md) | Accepted | Use deterministic bounded Structure/Context/Hybrid scenes and a custom drawing renderer |
 | [0003](0003-bounded-descendant-previews.md) | Accepted | Acquire actual descendant previews through bounded provider operations, admitting them only into unused Structure scene slots |
 
+| [0004](0004-spatial-only-nebula.md) | Accepted | Launch Spatial Explorer as the sole application interface |
+| [0005](0005-pinned-folders.md) | Accepted | Keep explicit local folder pins beside the spatial graph, with saved order and user-triggered navigation |
+
 ## Minimal template
 
 ```markdown

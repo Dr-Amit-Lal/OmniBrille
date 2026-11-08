@@ -6,6 +6,20 @@ namespace OmniBrille.Tests;
 public sealed class VisualPreferencesStoreTests
 {
     [Fact]
+    public void Load_LegacySoundEnabledCannotRestorePlaybackPreference()
+    {
+        using var directory = new TemporaryDirectory();
+        File.WriteAllText(Path.Combine(directory.Path, "visual-preferences.json"),
+            """{"Theme":"Light","SoundEnabled":true}""");
+        var store = new JsonVisualPreferencesStore(directory.Path);
+        var preferences = store.Load();
+        Assert.False(preferences.SoundEnabled);
+        Assert.Equal("Light", preferences.Theme);
+        store.Save(preferences with { SoundEnabled = true });
+        Assert.False(store.Load().SoundEnabled);
+    }
+
+    [Fact]
     public void SaveAndLoad_RoundTripsReducedSettingsAndTheme()
     {
         using var directory = new TemporaryDirectory();
@@ -26,7 +40,7 @@ public sealed class VisualPreferencesStoreTests
     }
 
     [Fact]
-    public void Load_PreVoicePreferenceFileUsesInstallerOwnedVoiceAndSoundDefaults()
+    public void Load_PreVoicePreferenceFileUsesInstallerOwnedVoiceWithoutSound()
     {
         using var directory = new TemporaryDirectory();
         File.WriteAllText(
@@ -46,7 +60,7 @@ public sealed class VisualPreferencesStoreTests
         Assert.True(preferences.ReducedMotion);
         Assert.True(preferences.VoiceEnabled);
         Assert.Equal("en", preferences.VoiceLanguage);
-        Assert.True(preferences.SoundEnabled);
+        Assert.False(preferences.SoundEnabled);
     }
 
     [Fact]

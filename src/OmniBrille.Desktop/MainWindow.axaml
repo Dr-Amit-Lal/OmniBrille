@@ -6,7 +6,7 @@
         Title="OmniBrille — Structure"
         FontSize="13"
         FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
-        Width="1180"
+        Width="1280"
         Height="760"
         MinWidth="820"
         MinHeight="520"
@@ -29,6 +29,10 @@
           <SolidColorBrush x:Key="SecondaryTextBrush" Color="#ACB8D0" />
           <SolidColorBrush x:Key="LoadingOverlayBrush" Color="#F2090D16" />
           <SolidColorBrush x:Key="LoadingTextBrush" Color="#D4DFFF" />
+          <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#101725" />
+          <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#B2C5FF" />
+          <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#EDF2FC" />
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#ACB8D0" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
@@ -71,7 +75,17 @@
       <Setter Property="MinHeight" Value="44" />
     </Style>
     <Style Selector="TextBox.hud">
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+      <Setter Property="PlaceholderForeground" Value="{DynamicResource SecondaryTextBrush}" />
       <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="TextBox.hud /template/ TextBlock#PART_Placeholder">
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.pin-open.current-pin">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
     </Style>
     <Style Selector="TextBlock.eyebrow">
       <Setter Property="LetterSpacing" Value="1" />
@@ -142,6 +156,40 @@
                   ToolTip.Tip="Show navigation history"
                   AutomationProperties.Name="Show navigation history" />
         </StackPanel>
+      </Border>
+
+      <Border x:Name="PinnedFoldersPanel" Classes="panel"
+              Width="238" HorizontalAlignment="Left" VerticalAlignment="Top"
+              Margin="16,136,0,0" Padding="12" AutomationProperties.Name="Pinned folders">
+        <Grid RowDefinitions="Auto,*" RowSpacing="8">
+          <Grid ColumnDefinitions="*,44">
+            <TextBlock Text="Pinned folders" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="7,0,0,0" />
+            <Button x:Name="PinsCollapseButton" Grid.Column="1" Classes="hud icon" Content="⌄"
+                    Click="OnPinsCollapseClick" AutomationProperties.Name="Collapse pinned folders" />
+          </Grid>
+          <Grid x:Name="PinnedFoldersBody" Grid.Row="1" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" RowSpacing="8">
+            <Border Height="1" Background="{DynamicResource HairlineBrush}" />
+            <TextBlock x:Name="PinsEmptyText" Grid.Row="1" Text="Keep your folders close." TextWrapping="Wrap"
+                       Margin="7,10" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <ScrollViewer x:Name="PinnedFoldersScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel x:Name="PinnedEntries" Spacing="2" />
+            </ScrollViewer>
+            <Border Grid.Row="3" Height="1" Background="{DynamicResource HairlineBrush}" />
+            <Grid Grid.Row="4" ColumnDefinitions="*,44" ColumnSpacing="4">
+              <Button x:Name="PinFolderButton" Classes="hud" Content="+ Pin folder" HorizontalAlignment="Stretch"
+                      Click="OnPinFolderClick" AutomationProperties.Name="Choose a folder to pin" />
+              <Button x:Name="PinCurrentFolderButton" Grid.Column="1" Classes="hud icon"
+                      Click="OnPinCurrentFolderClick" AutomationProperties.Name="Pin current folder"
+                      ToolTip.Tip="Pin current folder · Ctrl+Shift+P">
+                <Path Width="19" Height="20" Stretch="Uniform" Stroke="{DynamicResource SecondaryTextBrush}" StrokeThickness="1.3"
+                      Data="M 8,2 L 16,2 L 14,6 L 17,11 L 12,11 L 12,18 L 10,20 L 10,11 L 5,11 L 8,6 Z" />
+              </Button>
+            </Grid>
+            <TextBlock Grid.Row="5" Text="Drag to reorder" FontSize="10" HorizontalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}" />
+            <TextBlock x:Name="PinnedStatusText" Grid.Row="6" MaxLines="3" TextTrimming="CharacterEllipsis" IsVisible="False" TextWrapping="Wrap" FontSize="11"
+                       Foreground="{DynamicResource SecondaryTextBrush}" />
+          </Grid>
+        </Grid>
       </Border>
 
       <Border x:Name="HistoryPanel"
@@ -241,6 +289,7 @@
                   ToolTip.Tip="Search · Ctrl+F"
                   AutomationProperties.Name="Open Search"
                   AutomationProperties.HelpText="Expands Search for the current authorized scope. Control F." />
+          <StackPanel x:Name="UtilityControls" Orientation="Horizontal" Spacing="3">
           <Button x:Name="ConnectionButton"
                   Classes="hud compact"
                   Content="Standalone"
@@ -271,12 +320,14 @@
                   Click="OnSettingsClick"
                   ToolTip.Tip="Visual settings"
                   AutomationProperties.Name="Visual settings" />
-          <Button x:Name="SoundButton"
-                  Classes="hud compact"
-                  Content="SOUND ON"
-                  Click="OnSoundToggleClick"
-                  ToolTip.Tip="Mute or enable interaction sounds"
-                  AutomationProperties.Name="Mute interaction sounds" />
+          </StackPanel>
+          <Button x:Name="InterfaceToggleButton"
+                  Classes="hud icon"
+                  Content="◫"
+                  Click="OnInterfaceToggleClick"
+                  ToolTip.Tip="Hide controls · Ctrl+H"
+                  AutomationProperties.Name="Hide controls"
+                  AutomationProperties.HelpText="Hides the interface except Search and this restore button. Control H." />
         </StackPanel>
       </Border>
 
@@ -305,7 +356,7 @@
         </Grid>
       </Border>
 
-      <Border Classes="floating"
+      <Border x:Name="ZoomHud" Classes="floating"
               HorizontalAlignment="Left"
               VerticalAlignment="Bottom"
               Margin="16,0,0,16"
@@ -741,11 +792,6 @@
                     Content="Developer diagnostics"
                     IsCheckedChanged="OnVisualPreferenceChanged"
                     AutomationProperties.Name="Developer diagnostics" />
-          <CheckBox x:Name="SoundEnabledToggle"
-                    Content="Interaction sounds"
-                    IsCheckedChanged="OnVisualPreferenceChanged"
-                    AutomationProperties.Name="Enable interaction sounds"
-                    AutomationProperties.HelpText="Sounds are optional and never communicate unique state." />
           <Button x:Name="CopyDiagnosticsButton"
                   Classes="hud"
                   Content="Copy safe diagnostics"

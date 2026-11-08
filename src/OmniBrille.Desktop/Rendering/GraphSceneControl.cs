@@ -43,6 +43,7 @@ public sealed class GraphSceneControl : Control
     private const double AnimationDurationMilliseconds = 440;
     public const double MinimumInteractiveOpacity = 0.85;
     private static readonly Geometry FolderOutline = Geometry.Parse("M -25,-20 L -8,-20 L -3,-14 L 22,-14 L 22,-10 L 26,-10 L 21,18 L -22,18 Z M -22,18 L -25,-10 L 26,-10");
+    private static readonly Geometry NebulaDocument = Geometry.Parse("M -12,-18 L 4,-18 L 13,-9 L 13,18 L -12,18 Z M 4,-18 L 4,-9 L 13,-9 M -7,-3 L 7,-3 M -7,3 L 7,3 M -7,9 L 4,9");
     private static readonly IBrush NebulaAtmosphere = new RadialGradientBrush
     {
         Center = new RelativePoint(0.48, 0.46, RelativeUnit.Relative),
@@ -88,7 +89,9 @@ public sealed class GraphSceneControl : Control
     private readonly Dictionary<string, string> _labelNames = new(ExplorerIdentity.Comparer);
     private readonly Point[] _backgroundPoints = new Point[42];
     private readonly BoundedLruCache<LabelTextKey, TextLayout> _textCache = new(256);
-    private readonly BoundedLruCache<Color, SolidColorBrush> _brushCache = new(192);
+    private readonly BoundedLruCache<Color, SolidColorBrush> _brushCache = new(176);
+    private readonly BoundedLruCache<Color, IBrush> _folderFillCache = new(8);
+    private readonly BoundedLruCache<Color, IBrush> _folderGlowCache = new(8);
     private readonly BoundedLruCache<PenKey, Pen> _penCache = new(384);
     private ExplorerNeighborhood? _neighborhood;
     private IReadOnlyDictionary<string, GraphLayoutNode> _targetLayout =
@@ -189,7 +192,17 @@ public sealed class GraphSceneControl : Control
 
     public bool SearchActive { get; set; }
 
-    public Thickness ScenePadding { get; set; }
+    private Thickness _scenePadding;
+    public Thickness ScenePadding
+    {
+        get => _scenePadding;
+        set
+        {
+            if (_scenePadding == value) { return; }
+            _scenePadding = value;
+            InvalidateVisual();
+        }
+    }
 
     private Rect SceneViewport => new(ScenePadding.Left, ScenePadding.Top,
         Math.Max(1, Bounds.Width - ScenePadding.Left - ScenePadding.Right),
@@ -232,7 +245,7 @@ public sealed class GraphSceneControl : Control
         _labelDrawDuration,
         _renderAllocatedBytes,
         _textCache.Count,
-        _brushCache.Count + _penCache.Count)
+        _brushCache.Count + _penCache.Count + _folderFillCache.Count + _folderGlowCache.Count)
     {
         EdgeGlowDrawCalls = _edgeGlowDrawCalls,
     };
@@ -713,12 +726,7 @@ public sealed class GraphSceneControl : Control
         {
             // FNV-1a is deterministic across sessions. IDs remain opaque:
             // neither paths, names, nor file contents determine a relationship.
-            var hash = 2166136261u;
-            foreach (var character in node.Id)
-            {
-                hash = unchecked((hash ^ character) * 16777619u);
-            }
-            _branchAccents[node.Id] = ScenePalette.NebulaAccents[(int)(hash % (uint)ScenePalette.NebulaAccents.Count)];
+            _branchAccents[node.Id] = NebulaFolderGeometry.AccentFor(node.Id);
             _labelNames[node.Id] = HasRole(node, ExplorerNodeRole.DescendantPreview) ? $"↳ {node.Name}" : node.Name;
         }
 
@@ -962,7 +970,7 @@ public sealed class GraphSceneControl : Control
         var color = isHighlighted
             ? palette.Search
             : isFocus
-                ? palette.Focus
+                ? isNebula ? palette.Node : palette.Focus
                 : _neighborhood.ViewMode == ExplorerViewMode.Context ||
                   (_neighborhood.ViewMode == ExplorerViewMode.Hybrid && HasRole(node, ExplorerNodeRole.Contextual) && !HasRole(node, ExplorerNodeRole.Structural))
                     ? palette.ContextEdge
@@ -979,10 +987,10 @@ public sealed class GraphSceneControl : Control
 
         var halfWidth = 25 * scale;
         var halfHeight = 19 * scale;
-        var radius = ConstellationRadius(node, scale, isFocus);
+        var nebulaSize = NebulaGlyphSize(node, scale, isFocus);
         var glyphHalfWidth = GlyphHalfWidth(node.Kind) * scale;
         _glyphBoxes.Add(isNebula
-            ? new LabelBox(center.X - radius - 3, center.Y - radius - 3, radius * 2 + 6, radius * 2 + 6)
+            ? new LabelBox(center.X - nebulaSize.Width - 3, center.Y - nebulaSize.Height - 3, nebulaSize.Width * 2 + 6, nebulaSize.Height * 2 + 6)
             : new LabelBox(center.X - glyphHalfWidth - 3, center.Y - halfHeight - 3, glyphHalfWidth * 2 + 6, halfHeight * 2 + 6));
         var hitWidth = Math.Max(44, (halfWidth + 10) * 2);
         var hitHeight = Math.Max(44, (halfHeight + 10) * 2);
@@ -994,7 +1002,7 @@ public sealed class GraphSceneControl : Control
 
         if (isNebula)
         {
-            DrawConstellationNode(context, palette, node, center, radius, color, opacity,
+            DrawNebulaNode(context, palette, node, center, nebulaSize, color, opacity,
                 isFocus, isSelected, isHighlighted, isHovered);
         }
         else
@@ -1053,7 +1061,7 @@ public sealed class GraphSceneControl : Control
             HasRole(node, ExplorerNodeRole.Contextual))
         {
             var marker = isNebula
-                ? new Point(center.X + radius + 3, center.Y - radius - 2)
+                ? new Point(center.X + nebulaSize.Width + 3, center.Y - nebulaSize.Height - 2)
                 : new Point(center.X + halfWidth - 2, center.Y - halfHeight + 1);
             context.DrawEllipse(
                 Brush(palette.ContextEdgeGlow, ToByte(235 * opacity)),
@@ -1091,7 +1099,7 @@ public sealed class GraphSceneControl : Control
             maxWidth: item.MaxWidth,
             maxLines: 1));
         var width = Math.Min(maxWidth, text.WidthIncludingTrailingWhitespace);
-        var origin = new Point(center.X - (width / 2), center.Y + (isNebula ? radius : halfHeight) + 7);
+        var origin = new Point(center.X - (width / 2), center.Y + (isNebula ? nebulaSize.Height : halfHeight) + 7);
         var bounds = new LabelBox(origin.X, origin.Y, width, Math.Max(fontSize + 3, text.Height));
         var prepared = new PreparedLabel(
             new LabelCandidate(node.Id, bounds, isFocus ? 1000 : 0, true),
@@ -1105,90 +1113,81 @@ public sealed class GraphSceneControl : Control
         return prepared;
     }
 
-    private static double ConstellationRadius(ExplorerNode node, double scale, bool isFocus) =>
-        (isFocus ? 11 : node.Kind switch
+    private static Size NebulaGlyphSize(ExplorerNode node, double scale, bool isFocus)
+    {
+        var factor = Math.Clamp(scale, 0.55, 1.6);
+        if (isFocus) { return new Size(30 * factor, 23 * factor); }
+        return node.Kind switch
         {
-            ExplorerNodeKind.File => 4.2,
-            ExplorerNodeKind.Aggregate => 8,
-            _ => 7.2,
-        }) * Math.Clamp(scale, 0.7, 1.6);
+            ExplorerNodeKind.File => new Size(8 * factor, 11 * factor),
+            ExplorerNodeKind.Aggregate => new Size(10 * factor, 10 * factor),
+            _ => new Size(17 * factor, 13 * factor),
+        };
+    }
 
-    private void DrawConstellationNode(
+    private void DrawNebulaNode(
         DrawingContext context, ScenePalette palette, ExplorerNode node,
-        Point center, double radius, Color color, double opacity,
+        Point center, Size size, Color color, double opacity,
         bool isFocus, bool isSelected, bool isHighlighted, bool isHovered)
     {
-        if (!ReducedEffects && (isFocus || node.Kind != ExplorerNodeKind.File || isSelected || isHovered || isHighlighted))
+        var width = size.Width;
+        var height = size.Height;
+        if (node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Context)
         {
-            context.DrawEllipse(Brush(color, ToByte((isFocus ? 16 : 10) * opacity)), null, center, radius * 2.3, radius * 2.3);
-            context.DrawEllipse(Brush(color, ToByte((isFocus ? 26 : 18) * opacity)), null, center, radius * 1.55, radius * 1.55);
-        }
-
-        if (node.Kind == ExplorerNodeKind.Aggregate)
-        {
-            context.DrawEllipse(Brush(palette.Background), Pen(color, ToByte(250 * opacity), 1.5), center, radius, radius);
-            if (node.IsNavigable)
+            using (context.PushTransform(Matrix.CreateScale(width / 26, height / 19) * Matrix.CreateTranslation(center.X, center.Y)))
             {
-                var arrow = Pen(color, ToByte(250 * opacity), 1.35);
-                context.DrawLine(arrow, new Point(center.X - 3, center.Y), new Point(center.X + 3, center.Y));
-                context.DrawLine(arrow, new Point(center.X, center.Y - 3), new Point(center.X + 3, center.Y));
-                context.DrawLine(arrow, new Point(center.X, center.Y + 3), new Point(center.X + 3, center.Y));
+                // Static paths and bounded brush/pen caches keep the glow inexpensive.
+                if (!ReducedEffects)
+                {
+                    context.DrawEllipse(FolderGlow(color), null, new Point(0, 0), 42, 35);
+                    context.DrawGeometry(null, Pen(color, ToByte(28 * opacity), 4), NebulaFolderGeometry.Front);
+                }
+                context.DrawGeometry(Brush(palette.Background), Pen(color, ToByte(250 * opacity), 1.7), NebulaFolderGeometry.Back);
+                context.DrawGeometry(Brush(color, ToByte(32 * opacity)), null, NebulaFolderGeometry.Back);
+                context.DrawGeometry(Brush(palette.Background), null, NebulaFolderGeometry.Front);
+                context.DrawGeometry(FolderFill(color), Pen(color, ToByte(250 * opacity), 1.6), NebulaFolderGeometry.Front);
+                if (!ReducedEffects)
+                {
+                    context.DrawGeometry(null, Pen(palette.Text, ToByte(160 * opacity), 0.65), NebulaFolderGeometry.Front);
+                }
             }
-            else
+        }
+        else if (node.Kind == ExplorerNodeKind.File)
+        {
+            using (context.PushTransform(Matrix.CreateScale(width / 13, height / 18) * Matrix.CreateTranslation(center.X, center.Y)))
             {
-                var dot = Brush(color, ToByte(250 * opacity));
-                context.DrawEllipse(dot, null, new Point(center.X - 3, center.Y), 1, 1);
-                context.DrawEllipse(dot, null, center, 1, 1);
-                context.DrawEllipse(dot, null, new Point(center.X + 3, center.Y), 1, 1);
+                context.DrawGeometry(Brush(palette.Background), Pen(color, ToByte(250 * opacity), 1.6), NebulaDocument);
             }
         }
         else
         {
-            context.DrawEllipse(Brush(color, ToByte(250 * opacity)), null, center, radius, radius);
-            if (node.Kind != ExplorerNodeKind.File)
-            {
-                // A small bright core distinguishes folder hubs from file points.
-                context.DrawEllipse(Brush(palette.Focus, ToByte(235 * opacity)), null, center, isFocus ? 3 : 1.6, isFocus ? 3 : 1.6);
-            }
-        }
-
-        if (isFocus)
-        {
-            context.DrawEllipse(null, Pen(palette.Focus, ToByte(190 * opacity), 1), center, radius + 4, radius + 4);
-            if (!ReducedEffects)
-            {
-                context.DrawEllipse(null, Pen(palette.Focus, ToByte(48 * opacity), 1), center, radius + 8, radius + 8);
-            }
+            DrawAggregate(context, center, height, Pen(color, ToByte(250 * opacity), 1.5), Brush(color, 230), node.IsNavigable);
         }
 
         if (isSelected || isHovered)
         {
-            var ringRadius = radius + (isFocus ? 10 : 5);
             context.DrawEllipse(null,
                 Pen(palette.Selection, ToByte((isSelected ? 250 : 180) * opacity), isSelected ? 1.8 : 1),
-                center, ringRadius, ringRadius);
+                center, width * 1.42 + 6, height * 1.42 + 6);
         }
-
         if (isHighlighted)
         {
-            // Search uses a diamond in addition to its color; selection remains
-            // a ring and keyboard focus retains its separate corner reticle.
-            var extent = radius + 9;
+            // Search diamond clears the whole folder rectangle, including its corners.
+            var extentX = width * 2 + 7;
+            var extentY = height * 2 + 7;
             var searchPen = Pen(palette.Search, ToByte(250 * opacity), 1.3);
-            var top = new Point(center.X, center.Y - extent);
-            var right = new Point(center.X + extent, center.Y);
-            var bottom = new Point(center.X, center.Y + extent);
-            var left = new Point(center.X - extent, center.Y);
+            var top = new Point(center.X, center.Y - extentY);
+            var right = new Point(center.X + extentX, center.Y);
+            var bottom = new Point(center.X, center.Y + extentY);
+            var left = new Point(center.X - extentX, center.Y);
             context.DrawLine(searchPen, top, right);
             context.DrawLine(searchPen, right, bottom);
             context.DrawLine(searchPen, bottom, left);
             context.DrawLine(searchPen, left, top);
         }
-
         if (IsFocused && isSelected)
         {
-            var extent = Math.Max(22, radius + 14);
-            DrawFocusReticle(context, center, extent, extent, Pen(palette.Selection, 255, 2));
+            DrawFocusReticle(context, center, Math.Max(22, width + 11), Math.Max(22, height + 11), Pen(palette.Selection, 255, 2));
         }
     }
 
@@ -1331,16 +1330,9 @@ public sealed class GraphSceneControl : Control
         var sceneNode = GetAutomationNode(node.NodeId)!;
         if (ActualThemeVariant != ThemeVariant.Light)
         {
-            var radius = ConstellationRadius(sceneNode, scale, ExplorerIdentity.Equals(node.NodeId, _neighborhood!.FocusNodeId));
-            if (labelLeader)
-            {
-                // Leaders clear the square collision envelope as well as the
-                // circle, so they are not rejected as crossing their own node.
-                var peripheral = GraphEdgeGeometry.PeripheralPoint(center.X, center.Y, toward.X, toward.Y, radius, radius);
-                return new Point(peripheral.X, peripheral.Y);
-            }
-            var direction = new Vector(toward.X - center.X, toward.Y - center.Y);
-            return direction.Length <= 0.001 ? center : center + direction / direction.Length * (radius + 2);
+            var size = NebulaGlyphSize(sceneNode, scale, ExplorerIdentity.Equals(node.NodeId, _neighborhood!.FocusNodeId));
+            var peripheral = GraphEdgeGeometry.PeripheralPoint(center.X, center.Y, toward.X, toward.Y, size.Width + 2, size.Height + 2);
+            return new Point(peripheral.X, peripheral.Y);
         }
         var kind = sceneNode.Kind;
         var point = GraphEdgeGeometry.PeripheralPoint(center.X, center.Y, toward.X, toward.Y,
@@ -1472,6 +1464,8 @@ public sealed class GraphSceneControl : Control
         _cachedRenderScaling = renderScaling;
         _textCache.Clear();
         _brushCache.Clear();
+        _folderFillCache.Clear();
+        _folderGlowCache.Clear();
         _penCache.Clear();
     }
 
@@ -1480,6 +1474,28 @@ public sealed class GraphSceneControl : Control
         var resolved = alpha == byte.MaxValue ? color : WithAlpha(color, alpha);
         return _brushCache.GetOrAdd(resolved, static item => new SolidColorBrush(item));
     }
+
+    private IBrush FolderFill(Color color) => _folderFillCache.GetOrAdd(color, static item => new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+        GradientStops = new GradientStops
+        {
+            new(WithAlpha(item, 135), 0),
+            new(WithAlpha(item, 35), 0.5),
+            new(WithAlpha(item, 65), 1),
+        },
+    });
+
+    private IBrush FolderGlow(Color color) => _folderGlowCache.GetOrAdd(color, static item => new RadialGradientBrush
+    {
+        GradientStops = new GradientStops
+        {
+            new(WithAlpha(item, 65), 0),
+            new(WithAlpha(item, 30), 0.5),
+            new(WithAlpha(item, 0), 1),
+        },
+    });
 
     private Pen Pen(Color color, byte alpha, double thickness)
     {

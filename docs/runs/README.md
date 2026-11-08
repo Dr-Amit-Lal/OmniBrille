@@ -32,3 +32,5 @@ Retain a report only for architecture/product boundary changes, serious regressi
 - [2026-11-07 Nebulux My Files continuation](2026-11-07-nebulux-my-files.md): theme implementation, source recovery, validation and installer evidence.
 
 - [2026-11-08 Nebula Spatial Explorer](2026-11-08-nebula-spatial-explorer.md): sole spatial interface, constellation appearance, retained interaction contracts and validation boundaries.
+
+- [2026-11-08 Pinned spatial folders](2026-11-08-pinned-spatial-folders.md): saved folder pins, direct graph navigation, matched glyphs, responsive layout and validation boundaries.

@@ -33,10 +33,10 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
     private readonly DispatcherTimer _detailsTypingTimer;
     private readonly VoiceInteractionCoordinator _voice;
     private readonly IFileActivationService _fileActivation;
-    private readonly IInteractionSoundService _sound;
     private VisualPreferences _preferences;
     private ExplorerNeighborhood? _lastRenderedNeighborhood;
     private bool _detailsDismissed;
+    private bool _interfaceHidden;
     private bool _isApplyingPreferences;
     private bool _isSwitchingViewMode;
     private bool _isApplyingContextFilters;
@@ -75,16 +75,16 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         IAudioCaptureService? audioCapture = null,
         ISpeechRecognitionProvider? speechRecognition = null,
         IFileActivationService? fileActivation = null,
-        IInteractionSoundService? interactionSound = null)
+        IPinnedFoldersStore? pinnedFoldersStore = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _preferencesStore = preferencesStore ?? throw new ArgumentNullException(nameof(preferencesStore));
         _connection = connection ?? new OmniSorSeConnectionCoordinator();
         _handoffEndpoint = handoffEndpoint;
         _fileActivation = fileActivation ?? new ShellFileActivationService();
-        _sound = interactionSound ?? new CyberInteractionSoundService();
         _preferences = _preferencesStore.Load().Normalize();
-        _sound.Enabled = _preferences.SoundEnabled;
+        _pinStore = pinnedFoldersStore ?? new JsonPinnedFoldersStore();
+        _pins = _pinStore.Load().Normalize();
         _voice = new VoiceInteractionCoordinator(
             audioCapture ?? new WindowsWaveInAudioCaptureService(),
             speechRecognition ?? new WhisperCliSpeechRecognitionProvider(),
@@ -115,7 +115,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             handledEventsToo: true);
         GraphScene.NodeSelected += OnGraphNodeSelected;
         GraphScene.NodeActivated += OnGraphNodeActivated;
-        GraphScene.NodeHovered += OnGraphNodeHovered;
         GraphScene.BackRequested += async (_, _) => await GoBackAsync();
         GraphScene.DismissRequested += (_, _) => DismissTransientSurfaces();
         KeyDown += OnWindowKeyDown;
@@ -148,6 +147,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         _detailsTypingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(18) };
         _detailsTypingTimer.Tick += (_, _) => AdvanceDetailsTyping();
 
+        InitializePinnedFolders();
         ApplyPreferencesToControls();
         UpdateVoiceView();
         UpdateView();
@@ -270,6 +270,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
                 return;
             }
 
+            RestoreInterface();
             ConnectionPanel.IsVisible = true;
         }
 
@@ -533,10 +534,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
     {
         try
         {
-            if (await _session.GoRootAsync())
-            {
-                _sound.Play(InteractionSoundCue.Navigate);
-            }
+            await _session.GoRootAsync();
         }
         catch (OperationCanceledException)
         {
@@ -547,10 +545,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
     {
         try
         {
-            if (await _session.GoUpAsync())
-            {
-                _sound.Play(InteractionSoundCue.Navigate);
-            }
+            await _session.GoUpAsync();
         }
         catch (OperationCanceledException)
         {
@@ -576,18 +571,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         HistoryPanel.IsVisible = showHistory;
         UpdateHistoryView();
         UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void OnSoundToggleClick(object? sender, RoutedEventArgs e)
-    {
-        _preferences = (_preferences with { SoundEnabled = !_preferences.SoundEnabled }).Normalize();
-        _preferencesStore.Save(_preferences);
-        _sound.Enabled = _preferences.SoundEnabled;
-        ApplyPreferencesToControls();
-        if (_preferences.SoundEnabled)
-        {
-            _sound.Play(InteractionSoundCue.Select);
-        }
     }
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -622,10 +605,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
     {
         try
         {
-            if (await _session.GoBackAsync())
-            {
-                _sound.Play(InteractionSoundCue.Navigate);
-            }
+            await _session.GoBackAsync();
         }
         catch (OperationCanceledException)
         {
@@ -639,7 +619,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         if (SearchEditor.IsVisible)
         {
             CollapseSearchEditor();
-            SearchToggleButton.Focus();
+            if (_interfaceHidden) { SearchBox.Focus(); } else { SearchToggleButton.Focus(); }
             return;
         }
 
@@ -664,7 +644,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private void CollapseSearchEditor()
     {
-        SearchEditor.IsVisible = false;
+        SearchEditor.IsVisible = _interfaceHidden;
         AutomationProperties.SetName(SearchToggleButton, "Open Search");
         UpdateWelcomeAndStatusVisibility();
     }
@@ -677,7 +657,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         }
 
         CollapseSearchEditor();
-        SearchToggleButton.Focus();
+        if (_interfaceHidden) { SearchBox.Focus(); } else { SearchToggleButton.Focus(); }
     }
 
     private async void OnSearchKeyDown(object? sender, KeyEventArgs e)
@@ -689,7 +669,8 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         }
         else if (e.Key == Key.Escape)
         {
-            CloseSearchEditor(clearSearch: true);
+            if (_voice.IsActive) { await _voice.CancelAsync(); }
+            else { CloseSearchEditor(clearSearch: true); }
             e.Handled = true;
         }
     }
@@ -698,6 +679,9 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
     {
         if (string.IsNullOrEmpty(_session.AccessRoot))
         {
+            RestoreInterface();
+            CollapseSearchEditor();
+            WelcomeChooseFolderButton.Focus();
             SetTransientStatus("Choose a folder before searching.");
             return;
         }
@@ -727,7 +711,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
                     return VoiceActionResult.Rejected("The current focus has no authorized parent in this scope.");
                 }
 
-                _sound.Play(InteractionSoundCue.Navigate);
                 return VoiceActionResult.Completed("Moved up one containment level.");
 
             case VoiceIntentKind.GoRoot:
@@ -736,7 +719,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
                     return VoiceActionResult.Rejected("The current focus is already at the authorized root.");
                 }
 
-                _sound.Play(InteractionSoundCue.Navigate);
                 return VoiceActionResult.Completed("Moved to the authorized root.");
 
             case VoiceIntentKind.ActivateSelectedNode:
@@ -794,6 +776,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
                     return VoiceActionResult.Rejected("Select a visible node before opening details.");
                 }
 
+                RestoreInterface();
                 _detailsDismissed = false;
                 UpdateView();
                 DetailsPanel.Focus();
@@ -890,19 +873,24 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private async Task OpenRootAsync(string path)
     {
+        var generation = _session.ProviderGeneration;
+        var operation = _session.OperationGeneration;
         try
         {
             var provider = new FileSystemExplorerProvider(path);
-            await _session.OpenRootAsync(provider, provider);
-            GraphScene.ResetView();
+            var opening = _session.OpenRootAsync(provider, provider);
+            generation = _session.ProviderGeneration;
+            operation = _session.OperationGeneration;
+            await opening;
+            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { GraphScene.ResetView(); }
         }
         catch (OperationCanceledException)
         {
-            SetTransientStatus("Folder loading cancelled.");
+            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { SetTransientStatus("Folder loading cancelled."); }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            SetTransientStatus($"The selected folder could not be opened: {exception.Message}");
+            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { SetTransientStatus($"The selected folder could not be opened: {exception.Message}"); }
         }
     }
 
@@ -976,7 +964,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             ReducedMotion = ReducedMotionToggle.IsChecked == true,
             ReducedEffects = ReducedEffectsToggle.IsChecked == true,
             DiagnosticsVisible = DiagnosticsToggle.IsChecked == true,
-            SoundEnabled = SoundEnabledToggle.IsChecked == true,
         };
         _preferencesStore.Save(_preferences);
         ApplyVisualPreferences();
@@ -1046,6 +1033,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private void OnAccessibleListClick(object? sender, RoutedEventArgs e)
     {
+        RestoreInterface();
         if (AccessibleListPanel.IsVisible)
         {
             HideAccessibleList();
@@ -1057,6 +1045,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private void ShowAccessibleList()
     {
+        RestoreInterface();
         CollapseSearchEditor();
         AccessibleListPanel.IsVisible = true;
         ConnectionPanel.IsVisible = false;
@@ -1133,6 +1122,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private async Task ToggleVoiceAsync()
     {
+        RestoreInterface();
         if (!_preferences.VoiceEnabled)
         {
             _preferences = (_preferences with { VoiceEnabled = true }).Normalize();
@@ -1192,6 +1182,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             return;
         }
 
+        VoiceHud.IsVisible = !_interfaceHidden || _voice.IsActive;
         VoiceStateText.Text = _voice.Status;
         VoiceLevelIndicator.Value = _voice.InputLevel;
         VoiceTranscriptText.Text = string.IsNullOrWhiteSpace(_voice.TranscriptPreview)
@@ -1254,6 +1245,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private void OnContextFilterClick(object? sender, RoutedEventArgs e)
     {
+        RestoreInterface();
         if (!IsContextualMode(_session.ViewMode))
         {
             return;
@@ -1354,15 +1346,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         _detailsDismissed = false;
         SettingsPanel.IsVisible = false;
         _session.SelectNode(nodeId);
-        _sound.Play(InteractionSoundCue.Select);
-    }
-
-    private void OnGraphNodeHovered(object? sender, string? nodeId)
-    {
-        if (nodeId is not null)
-        {
-            _sound.Play(InteractionSoundCue.Hover);
-        }
     }
 
     private async void OnGraphNodeActivated(object? sender, string nodeId)
@@ -1415,11 +1398,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             try
             {
                 var opened = await _session.NavigateAsync(node.Target);
-                if (opened)
-                {
-                    _sound.Play(InteractionSoundCue.FolderEnter);
-                }
-
                 return opened;
             }
             catch (OperationCanceledException)
@@ -1448,7 +1426,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             });
             if (result == FileActivationResult.Opened)
             {
-                _sound.Play(InteractionSoundCue.FileOpen);
                 return true;
             }
         }
@@ -1458,7 +1435,19 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Space &&
+        if (e.Key == Key.P && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            RestoreInterface();
+            OnPinCurrentFolderClick(PinCurrentFolderButton, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.H && e.KeyModifiers == KeyModifiers.Control)
+        {
+            OnInterfaceToggleClick(InterfaceToggleButton, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Space &&
             e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
             e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
@@ -1500,6 +1489,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         {
             if (_session.SelectedNode is not null)
             {
+                RestoreInterface();
                 _detailsDismissed = false;
                 UpdateView();
                 DetailsPanel.Focus();
@@ -1625,10 +1615,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         ChooseFolderButton.IsEnabled = _session.CanGoRoot && !_session.IsLoading;
         HistoryButton.IsEnabled = _session.NavigationTrail.Count > 0;
         HistoryButton.Content = $"TRAIL {_session.NavigationHistoryCount}";
-        SoundButton.Content = _preferences.SoundEnabled ? "SOUND ON" : "SOUND OFF";
-        AutomationProperties.SetName(
-            SoundButton,
-            _preferences.SoundEnabled ? "Mute interaction sounds" : "Enable interaction sounds");
         UpdateHistoryView();
         ContextFilterButton.IsVisible = IsContextualMode(_session.ViewMode);
         if (!IsContextualMode(_session.ViewMode))
@@ -1667,7 +1653,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             !ContextFilterPanel.IsVisible &&
             !SettingsPanel.IsVisible &&
             !ConnectionPanel.IsVisible;
-        DetailsPanel.IsVisible = selected is not null &&
+        DetailsPanel.IsVisible = !_interfaceHidden && selected is not null &&
             !_detailsDismissed &&
             !SettingsPanel.IsVisible &&
             !ConnectionPanel.IsVisible &&
@@ -1703,7 +1689,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             !_session.IsLoading &&
             neighborhood.TotalChildCount == 0 &&
             string.IsNullOrWhiteSpace(neighborhood.Warning);
-        StructureEmptyPanel.IsVisible = emptyStructure && !showSearchResults;
+        StructureEmptyPanel.IsVisible = !_interfaceHidden && emptyStructure && !showSearchResults;
         StructureEmptyChooseButton.IsVisible = _session.ProviderMode == ExplorerProviderMode.Standalone;
         StructureEmptyProviderButton.IsVisible = _session.ProviderMode == ExplorerProviderMode.Connected;
         StructureEmptyBackButton.IsEnabled = _session.CanGoBack && !_session.IsLoading;
@@ -1713,7 +1699,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         var emptyContext = IsContextualMode(_session.ViewMode) &&
             !_session.IsLoading &&
             _session.ContextFilterSummary?.MatchingRelationshipCount == 0;
-        ContextEmptyPanel.IsVisible = emptyContext && !ContextFilterPanel.IsVisible;
+        ContextEmptyPanel.IsVisible = !_interfaceHidden && emptyContext && !ContextFilterPanel.IsVisible;
         ContextEmptyClearButton.IsVisible = _session.ContextFilter.IsActive;
         ContextEmptyText.Text = _session.ContextFilter.IsActive
             ? "No relationships match these filters. Clear them to restore the authorized Context neighborhood."
@@ -1743,7 +1729,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         }
         _lastRenderedNeighborhood = neighborhood;
         SynchronizeAccessibleList();
-        DiagnosticsPanel.IsVisible = _preferences.DiagnosticsVisible;
+        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
         UpdateDiagnostics();
         UpdateConnectionView();
         UpdateWelcomeAndStatusVisibility();
@@ -1951,7 +1937,6 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             ReducedMotionToggle.IsChecked = _preferences.ReducedMotion;
             ReducedEffectsToggle.IsChecked = _preferences.ReducedEffects;
             DiagnosticsToggle.IsChecked = _preferences.DiagnosticsVisible;
-            SoundEnabledToggle.IsChecked = _preferences.SoundEnabled;
             VoiceEnabledToggle.IsChecked = _preferences.VoiceEnabled;
             VoiceLanguagePicker.SelectedIndex = _preferences.VoiceLanguage == "auto" ? 1 : 0;
         }
@@ -1976,9 +1961,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         GraphScene.ReducedEffects = _preferences.ReducedEffects;
         DataRain.ReducedMotion = _preferences.ReducedMotion;
         DataRain.ReducedEffects = _preferences.ReducedEffects;
-        DiagnosticsPanel.IsVisible = _preferences.DiagnosticsVisible;
-        _sound.Enabled = _preferences.SoundEnabled;
-        SoundButton.Content = _preferences.SoundEnabled ? "SOUND ON" : "SOUND OFF";
+        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
         if (_preferences.DiagnosticsVisible)
         {
             _diagnosticsTimer.Start();
@@ -2132,21 +2115,56 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
             HistoryPanel.IsVisible ||
             SearchResultsPanel.IsVisible;
 
-        WelcomePanel.IsVisible = _session.Neighborhood is null &&
+        WelcomePanel.IsVisible = !_interfaceHidden && _session.Neighborhood is null &&
             !_session.IsLoading &&
             !panelOwnsStatusSpace &&
             !SearchEditor.IsVisible &&
             !DetailsPanel.IsVisible;
-        StatusHud.IsVisible = !panelOwnsStatusSpace;
+        StatusHud.IsVisible = !_interfaceHidden && !panelOwnsStatusSpace;
         UpdateResponsiveShellVisibility();
+    }
+
+    private void OnInterfaceToggleClick(object? sender, RoutedEventArgs e)
+    {
+        // Visibility only: keep the current graph, selection, pan, query and pending work.
+        _interfaceHidden = !_interfaceHidden;
+        SettingsPanel.IsVisible = false;
+        ConnectionPanel.IsVisible = false;
+        AccessibleListPanel.IsVisible = false;
+        ContextFilterPanel.IsVisible = false;
+        HistoryPanel.IsVisible = false;
+        _detailsDismissed = true;
+        UpdateView();
+        if (_interfaceHidden) { SearchBox.Focus(); } else { InterfaceToggleButton.Focus(); }
+    }
+
+    private void RestoreInterface()
+    {
+        if (!_interfaceHidden) { return; }
+        _interfaceHidden = false;
+        UpdateView();
     }
 
     private void UpdateResponsiveShellVisibility()
     {
+        UpdatePinnedFolderState();
         var detailsOwnsCompactRightPlane = ClientSize.Width <= 900 && DetailsPanel.IsVisible;
-        FocusHud.IsVisible = !detailsOwnsCompactRightPlane;
-        ModeHud.IsVisible = !detailsOwnsCompactRightPlane;
-        UtilityHud.IsVisible = !detailsOwnsCompactRightPlane;
+        CustomTitleBar.IsVisible = !_interfaceHidden;
+        NavigationHud.IsVisible = !_interfaceHidden;
+        ZoomHud.IsVisible = !_interfaceHidden;
+        VoiceHud.IsVisible = !_interfaceHidden || _voice.IsActive;
+        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
+        FocusHud.IsVisible = !_interfaceHidden && !detailsOwnsCompactRightPlane;
+        ModeHud.IsVisible = !_interfaceHidden && !detailsOwnsCompactRightPlane;
+        UtilityHud.IsVisible = _interfaceHidden || !detailsOwnsCompactRightPlane;
+        UtilityControls.IsVisible = !_interfaceHidden;
+        SearchToggleButton.IsVisible = !_interfaceHidden;
+        UtilityHud.Margin = _interfaceHidden ? new Thickness(0, 16, 16, 0) : new Thickness(0, 52, 16, 0);
+        SearchEditor.Margin = _interfaceHidden ? new Thickness(0, 16, 76, 0) : new Thickness(0, 106, 16, 0);
+        if (_interfaceHidden) { SearchEditor.IsVisible = true; }
+        var toggleLabel = _interfaceHidden ? "Show controls" : "Hide controls";
+        AutomationProperties.SetName(InterfaceToggleButton, toggleLabel);
+        ToolTip.SetTip(InterfaceToggleButton, toggleLabel + " · Ctrl+H");
     }
 
     private void UpdateHistoryView()
@@ -2172,7 +2190,7 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
                     _detailsDismissed = true;
                     try
                     {
-                        if (await _session.NavigateTrailAsync(entry)) { _sound.Play(InteractionSoundCue.Navigate); }
+                        await _session.NavigateTrailAsync(entry);
                     }
                     catch (OperationCanceledException) { }
                     UpdateView();
@@ -2221,10 +2239,8 @@ public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
         _detailsTypingTimer.Stop();
         GraphScene.SetMotionActivity(false);
         DataRain.SetMotionActivity(false);
-        GraphScene.NodeHovered -= OnGraphNodeHovered;
         _voice.StateChanged -= OnVoiceStateChanged;
         _voice.Dispose();
-        _sound.Dispose();
         _connection.StateChanged -= OnConnectionStateChanged;
         _session.ProviderFailed -= OnProviderFailed;
         _session.Dispose();

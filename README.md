@@ -1,21 +1,26 @@
 # OmniBrille · Spatial Explorer
 
-Explore your folders as a constellation of connected points. Spatial Explorer is the only interface in this fork, with a Nebula dark appearance and the existing folder navigation, name search, file opening and keyboard controls.
+Explore your folders as a constellation of connected folder icons. Spatial Explorer is the only interface in this fork, with a Nebula dark appearance and the existing folder navigation, name search, file opening and keyboard controls.
 
-**Custom preview: `1.2.0-nebula.1` (Spatial Explorer).** OmniBrille now opens directly into Spatial Explorer. My Files is no longer an application entry point. The dark Nebula theme uses small colored constellation points, subtle branch lines and a quiet navy/violet background; Light remains available. Install the update and use **OmniBrille Spatial Explorer** in the Start Menu, then choose your folder. The installer removes the old My Files launcher while preserving saved workspace data. `--root`, `--theme`, `--advanced` and OmniSorSe handoff compatibility remain. The [Windows installer build](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the custom installer ZIP after successful validation (GitHub sign-in required). The upstream v1.2.0 installer below does **not** include this design. Custom preview packages are unsigned; native interactive Windows acceptance remains separate from automated checks.
+**Custom preview: `1.2.0-nebula.3` (Spatial Explorer).** OmniBrille now opens directly into Spatial Explorer. My Files is no longer an application entry point. The dark Nebula theme uses glowing outlined folder icons, document icons, subtle branch lines and a quiet navy/violet background; Light remains available. Interaction sounds have been removed. The hide-controls toggle keeps Search and a restore button available. A collapsible **Pinned folders** sidebar remembers up to 12 local folders in your chosen order. Install the update and use **OmniBrille Spatial Explorer** in the Start Menu, then choose your folder. The installer removes the old My Files launcher while preserving saved workspace data. `--root`, `--theme`, `--advanced` and OmniSorSe handoff compatibility remain. The [Windows installer build](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the custom installer ZIP after successful validation (GitHub sign-in required). The upstream v1.2.0 installer below does **not** include this design. Custom preview packages are unsigned; native interactive Windows acceptance remains separate from automated checks.
 
 ## Using Spatial Explorer
 
-1. Open **OmniBrille Spatial Explorer** from the Start Menu and choose a folder.
+1. Open **OmniBrille Spatial Explorer** from the Start Menu and choose a folder, or click a saved pin.
 2. Single-click a folder to enter it; select a file to inspect it. Use Back, Up, or Trail to return.
 3. Open a selected file from its details. Search finds names within the selected root.
 4. Drag empty graph space to pan; use the zoom controls. The list button provides an alternative reading and navigation surface. The theme picker switches between Nebula and Light.
+5. Click **Hide controls** beside the utility controls, or press **Ctrl+H**, to keep only Search and **Show controls** visible over the graph. Press **Ctrl+H** again to restore the interface. Search results, loading cancellation and active microphone feedback remain available when needed. The toggle keeps your current selection, query and graph view.
 
-Only the explicitly selected root is accessible in standalone mode. Files stay in their existing locations. Spatial Explorer does not save selected roots, index the whole computer, or infer links between documents. Prior My Files workspace data is left intact but is not loaded.
+Use **+ Pin folder** to save a local folder, or **Pin current folder** / **Ctrl+Shift+P** while browsing in Standalone mode. Click a pin to make that folder the graph focus and the new Standalone access root. Drag pins to reorder them, or focus a pin and press **Alt+Up** / **Alt+Down**; its context menu also offers reorder and unpin actions. The pin button removes a saved shortcut without changing files. Collapse the sidebar from its header; **Ctrl+H** hides it with the other controls.
+
+Only the explicitly selected root is accessible in Standalone mode. Activating a pin from Connected mode explicitly switches to that saved local root; connected display paths and IDs are never saved as pins. A missing folder keeps its pin and the active graph so you can reconnect its drive and retry.
+
+Files stay in their existing locations. Only folders explicitly pinned are remembered, with their display names and order. Startup lists the pins without opening them, and the app does not index the whole computer or infer links between documents. Prior My Files workspace data is left intact but is not loaded or imported.
 
 Actual Avalonia software render using synthetic example folders:
 
-![Nebula Spatial Explorer](docs/assets/screenshots/spatial-nebula/nebula-spatial.png)
+![Nebula Spatial Explorer with pinned folders](docs/assets/screenshots/spatial-nebula/pinned-folders.png)
 
 See [architecture and boundaries](docs/architecture.md) for the current design and [the previous My Files design](docs/my-files.md) for retained source history. Original project attribution and third-party licenses remain intact.
 
@@ -23,7 +28,7 @@ See [architecture and boundaries](docs/architecture.md) for the current design a
 
 ## Upstream v1.2.0 reference
 
-The original downloads below describe upstream v1.2.0. Use the custom Windows build above for the Nebula design. The original no-saved-root behavior is retained.
+The original downloads and feature descriptions below describe upstream v1.2.0. Use the custom Windows build above for the Nebula design. In this custom preview, the upstream sound controls and playback are removed, and **Ctrl+H** adds the Search-only interface. Voice input is separate and remains available. Unlike upstream, this custom preview saves explicitly pinned local folders; ordinary browsing roots remain temporary.
 
 <p align="center">
   <img src="assets/branding/OmniBrille-icon-source.png" width="112" alt="OmniBrille">

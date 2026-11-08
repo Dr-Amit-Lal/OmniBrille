@@ -139,6 +139,10 @@ public sealed class ExplorerSession : IDisposable
     /// </summary>
     public long ProviderGeneration => Volatile.Read(ref _providerGeneration);
 
+    // Deferred UI actions must yield to a newer navigation or search, even within one provider.
+    public (long Load, long Search) OperationGeneration =>
+        (Volatile.Read(ref _loadRequestVersion), Volatile.Read(ref _searchRequestVersion));
+
     public ExplorerFailureKind CurrentFailure => _currentSnapshot?.Failure ?? ExplorerFailureKind.None;
 
     public async Task OpenRootAsync(

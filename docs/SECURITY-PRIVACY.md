@@ -4,8 +4,8 @@ OmniBrille is local-first and has no telemetry, cloud upload, crash-reporting se
 
 ## Data authority
 
-- My Files reads only explicitly connected local folders and remembers their paths, labels, expanded branches, pins, and text size in a separate local workspace. It does not save queries or file contents, crawl unrelated drives, follow reparse points recursively, or modify files. Advanced explorer retains its single-session selected-root behavior without root persistence. See [My Files](my-files.md).
-- Connected mode reads only opaque nodes and roots authorized by the live OmniSorSe grant. It never treats a displayed path as permission and never falls back to local filesystem access for a connected node.
+- Spatial Explorer is the sole interface in the custom `1.2.0-nebula.3` preview. It reads only the explicitly selected Standalone root and may remember up to 12 explicitly pinned local folder paths, display names and their order in `pinned-folders.json`. Pins are not opened or indexed at startup. Adding and activating them validates an ordinary local folder; a missing pin does not replace the active graph. The former [My Files](my-files.md) workspace is preserved but dormant, with no automatic import.
+- Connected mode reads only opaque nodes and roots authorized by the live OmniSorSe grant. It never treats a displayed path as permission and never falls back to local filesystem access for a connected node. Current-folder pinning is disabled in Connected mode. Clicking an existing saved local pin explicitly switches to Standalone; it never converts a connected path or ID into filesystem authority.
 - Context nodes, relationships, reasons, ranking strength, evidence, and provenance come only from OmniSorSe. OmniBrille retains at most eight bounded Context snapshots in process memory and never persists an intelligence copy.
 
 ## Handoff and local transport
@@ -33,12 +33,12 @@ The release gate rejects debug symbols, source/test artifacts, databases, logs, 
 - Provider/session generation is captured before recording. A transcript that completes after authority changes is rejected, so an utterance from one OmniSorSe/standalone session cannot execute against another.
 - Microphone permission denial, missing hardware, missing/corrupt runtime/model, timeout, and malformed output fail closed while typed navigation/Search remains available.
 
-## File activation and sound
+## File activation and sound-output boundary
 
-- My Files opens a selected file only through its explicit Open file button. Advanced explorer also supports explicit double-click, Enter, accessible-list Open, or equivalent bounded voice commands.
+- Spatial Explorer opens a selected file only through an explicit Open action, double-click, Enter, accessible-list Open, or equivalent bounded voice command. Pin actions open folders for navigation and never launch files.
 - Standalone activation revalidates the fully qualified selected-root boundary immediately before launch, rejects a reparse-point file or ancestor below the root, and blocks executable, script, installer, control-panel, management-console, shortcut, registry, application-reference, and URL-like extensions. It passes one file path to the Windows shell API without constructing a shell command and immediately releases the returned process handle.
 - Connected display paths are labels only. Connected file opening reports unavailable unless a future protocol supplies an explicit host-authorized operation; there is no filesystem fallback.
-- Interaction sounds are generated locally in memory, contain no user data, do not communicate a unique state, and are governed by one obvious persisted master switch. Muting releases playback resources and device failure cannot change session outcomes.
+- Interaction-sound output and controls are removed from the custom preview. `MainWindow` has no playback dispatch; legacy `SoundEnabled=true` preferences normalize to false. Optional microphone capture remains separate input functionality.
 
 ## Safe diagnostics
 

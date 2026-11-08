@@ -7,10 +7,12 @@ public sealed record VisualPreferences(
     bool DiagnosticsVisible = false,
     bool VoiceEnabled = true,
     string VoiceLanguage = "en",
-    bool SoundEnabled = true)
+    bool SoundEnabled = false)
 {
     public VisualPreferences Normalize() => this with
     {
+        // Retained only to read older preference files; Spatial Explorer has no sound output.
+        SoundEnabled = false,
         Theme = string.Equals(Theme, "Light", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark",
         VoiceLanguage = string.Equals(VoiceLanguage, "auto", StringComparison.OrdinalIgnoreCase) ? "auto" : "en",
     };
