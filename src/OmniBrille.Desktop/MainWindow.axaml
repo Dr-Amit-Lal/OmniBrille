@@ -5,14 +5,78 @@
         x:CompileBindings="False"
         Title="OmniBrille — Structure"
         FontSize="13"
-        Width="980"
-        Height="600"
+        FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
+        Width="1180"
+        Height="760"
         MinWidth="820"
         MinHeight="520"
         Icon="/Assets/OmniBrille.ico"
         WindowDecorations="None"
         ExtendClientAreaToDecorationsHint="True"
         WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="AppBackgroundBrush" Color="#090D16" />
+          <SolidColorBrush x:Key="SurfaceBrush" Color="#EE101725" />
+          <SolidColorBrush x:Key="SurfaceStrongBrush" Color="#FA151D2D" />
+          <SolidColorBrush x:Key="BorderBrush" Color="#53627C" />
+          <SolidColorBrush x:Key="HairlineBrush" Color="#503F506B" />
+          <SolidColorBrush x:Key="AccentBrush" Color="#B2C5FF" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#263A76C4" />
+          <SolidColorBrush x:Key="PrimaryTextBrush" Color="#EDF2FC" />
+          <SolidColorBrush x:Key="SecondaryTextBrush" Color="#ACB8D0" />
+          <SolidColorBrush x:Key="LoadingOverlayBrush" Color="#F2090D16" />
+          <SolidColorBrush x:Key="LoadingTextBrush" Color="#D4DFFF" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Border.floating">
+      <Setter Property="CornerRadius" Value="12" />
+    </Style>
+    <Style Selector="Border.panel">
+      <Setter Property="CornerRadius" Value="14" />
+    </Style>
+    <Style Selector="Button.hud">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Button.hud:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+      <Setter Property="Opacity" Value="0.5" />
+    </Style>
+    <Style Selector="Button.hud:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="RadioButton.hud">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="RadioButton.hud /template/ Border#PART_LayoutRoot">
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="RadioButton.hud:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+    </Style>
+    <Style Selector="RadioButton.hud:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="ComboBox.hud">
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="TextBox.hud">
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="TextBlock.eyebrow">
+      <Setter Property="LetterSpacing" Value="1" />
+    </Style>
+  </Window.Styles>
   <Grid x:Name="HeaderLayout">
       <rendering:GraphSceneControl x:Name="GraphScene"
                                    ScenePadding="20,170,20,70"
@@ -27,11 +91,11 @@
             DoubleTapped="OnTitleBarDoubleTapped"
             ColumnDefinitions="*,Auto"
             AutomationProperties.Name="OmniBrille window title bar">
-        <TextBlock Text="OMNIBRILLE // SPATIAL EXPLORER"
+        <TextBlock Text="Spatial Explorer"
                    Margin="14,0,0,0"
                    VerticalAlignment="Center"
-                   FontSize="9"
-                   LetterSpacing="1.4"
+                   FontSize="16"
+                   FontWeight="SemiBold"
                    Foreground="{DynamicResource SecondaryTextBrush}" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Margin="0,2,6,2">
           <Button x:Name="MinimizeWindowButton" Classes="hud compact" MinWidth="44" MinHeight="44" Height="44" Padding="0" Content="—" Click="OnMinimizeClick" AutomationProperties.Name="Minimize window" />
@@ -108,7 +172,7 @@
               Padding="18,7"
               MaxWidth="400">
         <StackPanel HorizontalAlignment="Center">
-          <TextBlock Text="CURRENT FOCUS // ↳ MARKS SUBFOLDER PREVIEWS"
+          <TextBlock Text="FOLDER MAP · ↳ SUBFOLDER PREVIEW"
                      Classes="eyebrow"
                      HorizontalAlignment="Center" />
           <TextBlock x:Name="CurrentPathText"
@@ -190,8 +254,8 @@
                     SelectedIndex="0"
                     SelectionChanged="OnThemeChanged"
                     AutomationProperties.Name="Theme"
-                    AutomationProperties.HelpText="Switches between Dark and Light themes.">
-            <ComboBoxItem Content="Dark" />
+                    AutomationProperties.HelpText="Switches between Nebula dark and Light themes.">
+            <ComboBoxItem Content="Nebula" />
             <ComboBoxItem Content="Light" />
           </ComboBox>
           <Button x:Name="AccessibleListButton"
@@ -731,7 +795,7 @@
               BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="1"
               CornerRadius="3">
-        <TextBlock x:Name="DiagnosticsText" FontFamily="Cascadia Mono" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" />
+        <TextBlock x:Name="DiagnosticsText" FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter" FontSize="10" Foreground="{DynamicResource SecondaryTextBrush}" />
       </Border>
 
       <Border x:Name="WelcomePanel"

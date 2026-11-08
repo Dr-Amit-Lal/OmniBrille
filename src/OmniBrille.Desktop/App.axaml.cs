@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
@@ -12,9 +13,8 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = Program.OmniSorSeHandoffEndpoint is not null || Program.UseAdvancedExplorer
-                ? new MainWindow(Program.StartupRoot, Program.StartupTheme, Program.OmniSorSeHandoffEndpoint)
-                : new MyFilesWindow(Program.StartupRoot, Program.StartupTheme);
+            desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
+            desktop.MainWindow = new MainWindow(Program.StartupRoot, Program.StartupTheme, Program.OmniSorSeHandoffEndpoint);
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.2.0-myfiles.3"
+  #define AppVersion "1.2.0-nebula.1"
 #endif
 #ifndef NumericVersion
   #define NumericVersion "1.2.0.0"
@@ -53,6 +53,8 @@ UsePreviousAppDir=yes
 UsePreviousGroup=yes
 
 [InstallDelete]
+; Replace the former My Files launcher during an in-place upgrade.
+Type: files; Name: "{autoprograms}\OmniBrille.lnk"
 Type: files; Name: "{app}\*.pdb"
 ; Public v1.0.0 carried this runtime diagnostics binary. .NET 8 servicing no longer publishes
 ; it for v1.1.0, so remove only that known installer-owned obsolete family during upgrade.
@@ -62,7 +64,7 @@ Type: files; Name: "{app}\mscordaccore_*.dll"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\OmniBrille"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Comment: "Local-first spatial file explorer"
+Name: "{autoprograms}\OmniBrille Spatial Explorer"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Comment: "Open the Spatial Explorer"
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch OmniBrille"; Flags: nowait postinstall skipifsilent

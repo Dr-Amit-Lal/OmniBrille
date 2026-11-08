@@ -24,10 +24,10 @@ public sealed class PackagingMetadataTests
         var installer = File.ReadAllText(Path.Combine(root, "installer", "OmniBrille.iss"));
 
         Assert.Equal("1.2.0", document.Descendants("VersionPrefix").Single().Value);
-        Assert.Equal("myfiles.3", document.Descendants("VersionSuffix").Single().Value);
+        Assert.Equal("nebula.1", document.Descendants("VersionSuffix").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("FileVersion").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("AssemblyVersion").Single().Value);
-        Assert.Contains("#define AppVersion \"1.2.0-myfiles.3\"", installer, StringComparison.Ordinal);
+        Assert.Contains("#define AppVersion \"1.2.0-nebula.1\"", installer, StringComparison.Ordinal);
         Assert.Contains("#define NumericVersion \"1.2.0.0\"", installer, StringComparison.Ordinal);
         Assert.Equal("OmniBrille", document.Descendants("Product").Single().Value);
         Assert.Equal("MIT", document.Descendants("PackageLicenseExpression").Single().Value);
@@ -57,6 +57,8 @@ public sealed class PackagingMetadataTests
 
         Assert.Contains("DefaultDirName={localappdata}\\Programs\\OmniBrille", script, StringComparison.Ordinal);
         Assert.Contains("PrivilegesRequired=lowest", script, StringComparison.Ordinal);
+        Assert.Contains("Type: files; Name: \"{autoprograms}\\OmniBrille.lnk\"", script, StringComparison.Ordinal);
+        Assert.Contains("Name: \"{autoprograms}\\OmniBrille Spatial Explorer\"; Filename: \"{app}\\{#AppExeName}\"", script, StringComparison.Ordinal);
         Assert.Contains("OmniBrille.exe", script, StringComparison.Ordinal);
         Assert.Contains("{autoprograms}\\OmniBrille", script, StringComparison.Ordinal);
         Assert.Contains("Excludes: \"*.pdb\"", script, StringComparison.Ordinal);
@@ -66,7 +68,7 @@ public sealed class PackagingMetadataTests
         Assert.DoesNotContain("OMNISORSE_OMNIBRILLE_PATH", script, StringComparison.Ordinal);
         Assert.DoesNotContain(string.Concat("Omni", "Explorer"), script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(string.Concat("Omni", "Nav"), script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Local-first spatial file explorer", script, StringComparison.Ordinal);
+        Assert.Contains("Open the Spatial Explorer", script, StringComparison.Ordinal);
     }
 
     [Fact]

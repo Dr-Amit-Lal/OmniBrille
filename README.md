@@ -1,33 +1,29 @@
-# OmniBrille · My Files
+# OmniBrille · Spatial Explorer
 
-This fork opens to **My Files**, a simple visual map of folders you choose. It adds large readable cards, branches that expand in place, Current Work pins, name search, and a saved local workspace. Files stay in their original locations.
+Explore your folders as a constellation of connected points. Spatial Explorer is the only interface in this fork, with a Nebula dark appearance and the existing folder navigation, name search, file opening and keyboard controls.
 
-**Custom preview: `1.2.0-myfiles.3` (Nebulux).** My Files now uses the approved dark glass appearance with colored folder branches and outline icons. New installs start in Nebulux; saved Light preferences carry forward. The [Windows installer build](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the custom installer ZIP after successful validation (GitHub sign-in required). The upstream v1.2.0 installer below does **not** include this interface. Custom preview packages are unsigned; Windows may show Unknown Publisher or SmartScreen. Native interactive Windows acceptance remains separate from build checks. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
+**Custom preview: `1.2.0-nebula.1` (Spatial Explorer).** OmniBrille now opens directly into Spatial Explorer. My Files is no longer an application entry point. The dark Nebula theme uses small colored constellation points, subtle branch lines and a quiet navy/violet background; Light remains available. Install the update and use **OmniBrille Spatial Explorer** in the Start Menu, then choose your folder. The installer removes the old My Files launcher while preserving saved workspace data. `--root`, `--theme`, `--advanced` and OmniSorSe handoff compatibility remain. The [Windows installer build](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the custom installer ZIP after successful validation (GitHub sign-in required). The upstream v1.2.0 installer below does **not** include this design. Custom preview packages are unsigned; native interactive Windows acceptance remains separate from automated checks.
 
-## Using My Files
+## Using Spatial Explorer
 
-1. Choose **Documents**, **Desktop**, or **Add folder**. You can give a folder a simple display label in Settings before adding it.
-2. Select a folder card to expand or collapse its branch. Use the page buttons for large folders.
-3. Select a file to see its full name and location, then choose **Open file**. Pin frequently used files to **Current Work**.
-4. Use **Home** for the folder overview, **Search** to find a name within connected folders, and **Settings** for larger text, appearance, refresh, and removing folders from the map.
+1. Open **OmniBrille Spatial Explorer** from the Start Menu and choose a folder.
+2. Single-click a folder to enter it; select a file to inspect it. Use Back, Up, or Trail to return.
+3. Open a selected file from its details. Search finds names within the selected root.
+4. Drag empty graph space to pan; use the zoom controls. The list button provides an alternative reading and navigation surface. The theme picker switches between Nebula and Light.
 
-Only explicitly chosen folders are used. The local workspace remembers folder paths, labels, expanded branches, pins, and text size; it does not save file contents or search queries. Removing a folder from the map leaves the files alone. This first version has no automatic filing, file moves, renaming, PDF preview, semantic links, or live filesystem watcher. Use **Refresh files** after changes elsewhere. Map positions are determined automatically, not manually dragged and saved.
+Only the explicitly selected root is accessible in standalone mode. Files stay in their existing locations. Spatial Explorer does not save selected roots, index the whole computer, or infer links between documents. Prior My Files workspace data is left intact but is not loaded.
 
-## Custom interface preview
+Actual Avalonia software render using synthetic example folders:
 
-Actual Avalonia software renders with synthetic example folders. First launch asks you to choose locations; these screenshots do not come from an installed Windows release.
+![Nebula Spatial Explorer](docs/assets/screenshots/spatial-nebula/nebula-spatial.png)
 
-![Nebulux My Files home map](docs/assets/screenshots/my-files/nebulux-home.png)
-
-[First launch](docs/assets/screenshots/my-files/nebulux-first-run.png) · [Expanded Teaching branch](docs/assets/screenshots/my-files/nebulux-expanded.png) · [Settings](docs/assets/screenshots/my-files/nebulux-settings.png) · [Light appearance](docs/assets/screenshots/my-files/nebulux-light-home.png)
-
-See [My Files design and boundaries](docs/my-files.md) for limits, build instructions, and verification scope. Original project attribution and third-party licenses are retained.
+See [architecture and boundaries](docs/architecture.md) for the current design and [the previous My Files design](docs/my-files.md) for retained source history. Original project attribution and third-party licenses remain intact.
 
 ---
 
-## Upstream v1.2.0 / Advanced explorer reference
+## Upstream v1.2.0 reference
 
-The following original download and capability information describes upstream v1.2.0 and the retained Advanced explorer. Its no-saved-root contract applies to Advanced explorer only; the custom My Files workspace above intentionally remembers selected local folders.
+The original downloads below describe upstream v1.2.0. Use the custom Windows build above for the Nebula design. The original no-saved-root behavior is retained.
 
 <p align="center">
   <img src="assets/branding/OmniBrille-icon-source.png" width="112" alt="OmniBrille">

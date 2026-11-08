@@ -1,6 +1,6 @@
 # ADR 0002: Separate saved standalone file map
 
-Status: Accepted for this custom fork.
+Status: Superseded for application startup by [ADR 0004](0004-spatial-only-nebula.md). The separate workspace implementation remains dormant and its data is preserved.
 
 ## Decision
 

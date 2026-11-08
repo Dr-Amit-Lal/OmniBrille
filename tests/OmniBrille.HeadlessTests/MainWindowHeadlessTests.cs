@@ -1795,6 +1795,10 @@ public sealed class MainWindowHeadlessTests
     }
 
     [AvaloniaTheory]
+    [InlineData("nebula-compact", false, false, false)]
+    [InlineData("nebula-search", false, true, false)]
+    [InlineData("nebula-large-text", false, false, false)]
+    [InlineData("nebula-spatial", false, false, false)]
     [InlineData("preview-dark", false, false, false)]
     [InlineData("preview-light", true, false, false)]
     [InlineData("dense-dark", false, true, false)]
@@ -1805,12 +1809,15 @@ public sealed class MainWindowHeadlessTests
         var store = new MemoryPreferencesStore();
         store.Save(new VisualPreferences(Theme: light ? "Light" : "Dark", ReducedMotion: true, ReducedEffects: false));
         using var window = new MainWindow(session, store);
-        window.Width = dense ? 980 : 1280;
-        window.Height = dense ? 600 : 800;
+        window.Width = name == "nebula-compact" ? 820 : dense ? 980 : 1280;
+        window.Height = name == "nebula-compact" ? 520 : dense ? 600 : 800;
         window.Show();
         var root = Path.Combine(Path.GetTempPath(), "OmniBrille-Demo");
         var focus = Entry(root, ExplorerNodeKind.Folder) with { Name = "Workspace" };
-        var folders = EvidenceFolders.Select(item => Entry(Path.Combine(root, item), ExplorerNodeKind.Folder)).ToArray();
+        var folderNames = name == "nebula-spatial"
+            ? new[] { "Teaching", "Research", "Projects", "Personal", "Archive", "Presentations", "Courses", "Photography", "Community", "Writing", "Data", "Business", "Design", "Resources", "Travel", "Notes" }
+            : EvidenceFolders;
+        var folders = folderNames.Select(item => Entry(Path.Combine(root, item), ExplorerNodeKind.Folder)).ToArray();
         var children = dense
             ? Enumerable.Range(0, 47).Select(index => Entry(Path.Combine(root, $"{(index % 3 == 0 ? "Report" : index % 3 == 1 ? "Photo" : "Note")}-{index:D2}.{(index % 3 == 0 ? "pdf" : index % 3 == 1 ? "jpg" : "md")}"), ExplorerNodeKind.File)).ToArray()
             : folders.Concat(new[] { Entry(Path.Combine(root, "Notes.md"), ExplorerNodeKind.File), Entry(Path.Combine(root, "Overview.pdf"), ExplorerNodeKind.File) }).ToArray();
@@ -1819,6 +1826,12 @@ public sealed class MainWindowHeadlessTests
         var provider = new SnapshotEvidenceProvider(root, new ExplorerDirectorySnapshot(focus, children, Previews: previews));
         await session.OpenRootAsync(provider, provider);
         var graph = window.FindControl<GraphSceneControl>("GraphScene")!;
+        if (name == "nebula-large-text") { graph.TextScale = 2; }
+        if (name == "nebula-search")
+        {
+            graph.SetScene(session.Neighborhood, children[7].Id, new HashSet<string> { children[7].Id, children[18].Id }, animate: false);
+            graph.Focus();
+        }
         if (zoomOut) { for (var index = 0; index < 6; index++) { graph.ZoomOut(); } }
         using var frame = window.CaptureRenderedFrame();
         Assert.Equal(session.Neighborhood!.Nodes.Count, graph.Diagnostics.Labels);

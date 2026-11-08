@@ -1,6 +1,6 @@
 # My Files custom interface
 
-My Files is the default standalone screen in this fork. Its purpose is to make folders and files easier to recognize without deep click-through navigation. The original OmniBrille explorer remains available in Settings and for OmniSorSe handoffs.
+My Files is retired from the application entry points in `1.2.0-nebula.1`. Normal launch, the single **OmniBrille Spatial Explorer** Start Menu shortcut, `--advanced`, and OmniSorSe handoffs all use Spatial Explorer. The former My Files implementation and regression fixtures remain in source for now; its saved workspace is preserved but not read into Spatial Explorer. The following details describe that dormant implementation.
 
 ## Interaction
 
@@ -14,9 +14,9 @@ My Files is the default standalone screen in this fork. Its purpose is to make f
 
 ## Nebulux appearance
 
-New installs start in Nebulux (dark). An existing Light preference and an explicit startup theme are respected. The Appearance picker retains the existing `Dark`/`Light` storage values, so there is no preference or workspace migration.
+The retained My Files implementation uses Nebulux (dark) by default. An existing Light preference and an explicit startup theme are respected. The Appearance picker retains the existing `Dark`/`Light` storage values, so there is no preference or workspace migration.
 
-The My Files window owns its dark navy gradients, glass-like cards, colored folder/file outlines, soft static glows and branch lines. Six accent colors repeat in saved root order; descendants use their root's color. Labels remain packaged Inter with a distinct keyboard-focus ring. The Advanced explorer keeps its own palette. Settings, Search and file details use opaque panels for readable text.
+The My Files window owns its dark navy gradients, glass-like cards, colored folder/file outlines, soft static glows and branch lines. Six accent colors repeat in saved root order; descendants use their root's color. Labels remain packaged Inter with a distinct keyboard-focus ring. Spatial Explorer has its own Nebula palette: small branch-colored points, thin structural connectors, quiet static navy/violet washes and rounded controls. Its Dark preference is displayed as Nebula, while Light remains available. Settings, Search and file details use opaque panels for readable text.
 
 The six names in the screenshots are examples. First launch asks you to connect actual folders; it does not create or reorganize folders on your PC.
 

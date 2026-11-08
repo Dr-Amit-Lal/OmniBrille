@@ -1,6 +1,6 @@
 # Windows packaging and public releases
 
-**Custom fork:** source version is `1.2.0-myfiles.3`. The historical upstream v1.2.0 package details below do not qualify this fork. Custom workspace state and defaults are described in [My Files](my-files.md); native Windows installer acceptance remains outstanding.
+**Custom fork:** source version is `1.2.0-nebula.1`. The historical upstream v1.2.0 package details below do not qualify this fork. Spatial Explorer is the sole startup screen. The old My Files shortcut is removed during upgrade; legacy [My Files workspace data](my-files.md) is retained but is not loaded by Spatial Explorer; native Windows installer acceptance remains outstanding.
 
 ## Supported package
 
@@ -10,7 +10,7 @@ OmniBrille uses pinned Inno Setup 6.7.3 for one per-user Windows x64 installer. 
 %LOCALAPPDATA%\Programs\OmniBrille\OmniBrille.exe
 ```
 
-The fixed application ID provides in-place upgrade, one Start Menu entry, one uninstall registration, and standard running-application coordination without administrator rights. This path is also among the bounded locations historically used by the compatible OmniSorSe companion launcher.
+The fixed application ID provides in-place upgrade, one Spatial Explorer Start Menu launcher, one uninstall registration, and standard running-application coordination without administrator rights. This path is also among the bounded locations historically used by the compatible OmniSorSe companion launcher.
 
 MSIX was not selected because its identity/signing lifecycle would raise the first-release gate without improving this current-user application. WiX/MSI is disproportionate; NSIS would duplicate lifecycle scripting already supplied by Inno Setup. Do not introduce a second package format without a new platform or lifecycle requirement.
 
@@ -92,7 +92,7 @@ That workflow deliberately does not create a tag or GitHub Release. Its non-inte
 
 The installer owns its application directory, Start Menu shortcut, uninstall registration, and pinned `Voice` bundle. It excludes PDB/source/test/database/key/raw-or-test-audio material, development paths, unexpected OmniSorSe binaries, and any voice file outside the reviewed allowlist.
 
-Safe UI preferences remain at `%LOCALAPPDATA%\OmniBrille\visual-preferences.json` and intentionally survive upgrade/uninstall. They may include theme, effects, diagnostics, sound, voice enablement, and language. In this fork, My Files separately persists selected local roots, labels, expanded branches, pins, and text size in `file-map-workspace.json`. This file also survives uninstall; remove connected folders from Settings before uninstalling to clear those entries. Queries, content, audio, transcripts, grants, bearer tokens, endpoints, connected node IDs, and Context caches are not persisted. Advanced explorer does not save its selected roots. User content and OmniSorSe state are never removed; uninstall removes installer-owned voice assets.
+Safe UI preferences remain at `%LOCALAPPDATA%\OmniBrille\visual-preferences.json` and intentionally survive upgrade/uninstall. They may include theme, effects, diagnostics, sound, voice enablement, and language. Earlier My Files builds stored selected local roots, labels, expanded branches, pins, and text size in `file-map-workspace.json`. That legacy file survives upgrade/uninstall but is not read by Spatial Explorer. Queries, content, audio, transcripts, grants, bearer tokens, endpoints, connected node IDs, and Context caches are not persisted. Spatial Explorer does not save its selected roots. User content and OmniSorSe state are never removed; uninstall removes installer-owned voice assets.
 
 Forward in-place upgrade is supported through the stable application ID. Packaging excludes the diagnostics-only `mscordaccore_*.dll` family even if a servicing runtime pack supplies it, and the installer narrowly removes the obsolete installer-owned copy carried by public v1.0.0; it does not broadly clear the application directory. Both the package verifier and hosted installed-artifact gate reject that family. Downgrade is neither blocked nor promised. Qualification records fresh install, upgrade from the exact public predecessor, representative Standalone interaction, normal close/relaunch, and uninstall separately. Earlier release lifecycle measurements are historical evidence, not proof for a new exact artifact. An owner-authorized release for continued manual testing may retain explicitly unverified manual checks; that publication does not qualify those behaviors.
 

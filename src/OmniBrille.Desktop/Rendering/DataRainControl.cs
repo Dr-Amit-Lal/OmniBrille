@@ -128,7 +128,7 @@ public sealed class DataRainControl : Control
                     item.Text,
                     CultureInfo.InvariantCulture,
                     FlowDirection.LeftToRight,
-                    new Typeface("Cascadia Mono"),
+                    new Typeface("avares://Avalonia.Fonts.Inter/Assets#Inter"),
                     item.FontSize,
                     new SolidColorBrush(item.Color)));
                 var y = baseY + (tokenIndex * (ReducedEffects ? 38 : 31));

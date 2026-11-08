@@ -221,7 +221,14 @@ jobs:
           $application = Join-Path $installDirectory 'OmniBrille.exe'
           $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OmniBrille.lnk'
           if (-not (Test-Path -LiteralPath $application -PathType Leaf)) { throw 'Installed executable was not found.' }
-          if (-not (Test-Path -LiteralPath $shortcut -PathType Leaf)) { throw 'Start Menu shortcut was not found.' }
+          if (Test-Path -LiteralPath $shortcut) { throw 'Obsolete My Files shortcut remains after upgrade.' }
+          $spatialShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OmniBrille Spatial Explorer.lnk'
+          if (-not (Test-Path -LiteralPath $spatialShortcut -PathType Leaf)) { throw 'Spatial Explorer shortcut was not found.' }
+          $shell = New-Object -ComObject WScript.Shell
+          $spatialLink = $shell.CreateShortcut($spatialShortcut)
+          if ($spatialLink.TargetPath -ne $application -or -not [string]::IsNullOrWhiteSpace($spatialLink.Arguments)) { throw 'Spatial Explorer shortcut does not launch the installed advanced explorer.' }
+          [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($spatialLink)
+          [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
           $requiredNotices = @(
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt',
@@ -399,6 +406,7 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstall.ExitCode)." }
           if (Test-Path -LiteralPath $installDirectory) { throw 'Installer-owned application directory remains after uninstall.' }
           if (Test-Path -LiteralPath $shortcut) { throw 'Start Menu shortcut remains after uninstall.' }
+          if (Test-Path -LiteralPath $spatialShortcut) { throw 'Spatial Explorer shortcut remains after uninstall.' }
           $remainingRegistration = @(Get-ChildItem -LiteralPath $uninstallRoot | ForEach-Object {
             Get-ItemProperty -LiteralPath $_.PSPath
           } | Where-Object { $_.DisplayName -eq 'OmniBrille' })

@@ -2,26 +2,21 @@
 
 > **Authority:** current OmniBrille subsystem, ownership, state, and flow model. Stage-specific timings and installed-workflow narratives are explicitly historical evidence, not active architecture or universal guarantees.
 
-## Custom My Files entry point
+## Spatial Explorer entry point
 
-This fork's ordinary launch now opens `MyFilesWindow`, a standalone native-control map. `--advanced` and `--omnisorse-handoff` retain `MainWindow` and the original `ExplorerSession`. The existing component descriptions below apply to that advanced/connected subsystem unless stated otherwise.
+`App` always creates `MainWindow` and its `ExplorerSession`. Normal startup and the single **OmniBrille Spatial Explorer** Start Menu shortcut open the same interface. `--advanced` is retained as a compatibility option; `--root`, `--theme`, and `--omnisorse-handoff` retain their meanings. Without a root or handoff, the existing welcome screen asks the user to choose a folder. The application exits when its last window closes.
 
-`MyFilesSession` exclusively owns the custom map's selected roots, expanded branches, bounded directory snapshots/pages, selection, pins, search, cancellation and generation checks. It reuses `FileSystemExplorerProvider` per selected root and `ShellFileActivationService` for explicit file opening. `FileMapPathGuard` checks ordinary ancestors including the root before restored reads and file activation. Native Avalonia buttons project nodes and provide keyboard/automation invocation; drawn connectors never acquire data or authorize actions.
+The prior `MyFilesWindow`/`MyFilesSession` implementation remains dormant in source and tests. It has no application startup or menu route. Its versioned local workspace is preserved for reversibility but is not imported or read by Spatial Explorer. The installer removes only the known obsolete `OmniBrille.lnk` launcher. Its old design is documented in [My Files](my-files.md) and [ADR 0002](decisions/0002-standalone-file-map.md), superseded for startup by this Spatial-only choice.
 
-My Files appearance resources are scoped to `MyFilesWindow`. Nebulux uses the existing Dark preference, defaults through `JsonVisualPreferencesStore.Load`, and retains saved Light settings. Static icon/connector geometry is decorative; native node buttons remain the input and automation surface. Root colors follow saved order and do not represent inferred file relationships.
-
-`JsonFileMapWorkspaceStore` persists a separate versioned local workspace, including selected local roots, labels, expansion, pins and text size. This is an intentional persistence change in the fork. It never contains connected IDs, grants, content, queries or transcripts. The original `JsonVisualPreferencesStore` contract is unchanged. See [My Files](my-files.md) and [ADR 0002](decisions/0002-standalone-file-map.md).
+Nebula uses the existing Dark preference with appearance resources scoped to `MainWindow`; the Light palette remains available. The graph uses small constellation points and cached navy/violet background washes. Branch colors represent existing containment branches only, never inferred relationships. Native/automation targets, scene budgets, semantic depth and all admitted labels remain unchanged.
 
 ```mermaid
 flowchart TD
-  Launch[Launch] --> Choice{Handoff or advanced?}
-  Choice -->|Yes| Advanced[Existing MainWindow]
-  Choice -->|No| Simple[MyFilesWindow]
-  Simple --> Session[MyFilesSession]
-  Session --> Guard[Local path validation]
-  Guard --> Provider[Filesystem provider]
-  Session --> Store[Local workspace store]
-  Session --> Open[Explicit file activation]
+  Launch[Application launch] --> Spatial[Spatial Explorer]
+  Spatial --> Choice{Startup source}
+  Choice -->|Folder| Local[Filesystem provider]
+  Choice -->|Handoff| Connected[Authorized provider]
+  Choice -->|Neither| Welcome[Choose folder]
 ```
 
 ## Status and goals
@@ -131,7 +126,7 @@ Connected previews use the issued opaque folder target for focus details and one
 - `MainWindow` is an Avalonia interaction adapter for provider/mode/root/history operations, Search/result navigation, Context relation Details, safe file activation, sensory preferences, synchronized list, diagnostics, custom chrome, keyboard shortcuts, live status, and automation metadata. It implements the narrow voice action target by calling those existing operations; Voice never owns a second navigation or Search state.
 - `GraphSceneControl` owns only scene/input state: zoom, pan, target-aligned hit rectangles, transition/analytic motion, hover, geometric keyboard navigation, draw preparation, bounded caches/diagnostics, and the current visible-node selection/invoke automation projection.
 - `DataRainControl` renders a fixed, deterministic number of sparse blue token streams, caches its small token set, becomes static/sparse for reduced motion, and stops when hidden.
-- `ScenePalette` and application resources centralize the Dark/Light visual tokens.
+- `ScenePalette`, application resources and the scoped `MainWindow` Nebula resources define the Dark/Light visual tokens.
 
 ## State ownership
 
@@ -233,13 +228,13 @@ Preview enrichment consumes only capacity left after primary child/aggregate adm
 
 ## Layout, focus, LOD, and labels
 
-Focus is semantic depth 0 at the center. Every admitted direct child is semantic depth 1 and is explicitly described as a direct child of the current focus in the graph, synchronized list, details, and automation. Density is a separate `PresentationBand`: twelve children use the inner band, sixteen the middle band, and the bounded remainder the outer band. All remain recognizable outlined folder/file glyphs with a minimum 44-DIP effective target; density never creates a fake deeper hierarchy or point-star representation. Actual descendant previews use semantic depth 2, a smaller subdued folder glyph, a `↳` label prefix, and a structural edge to their admitted parent. Previous focus is a distinct history/orientation node, not a parent.
+Focus is semantic depth 0 at the center. Every admitted direct child is semantic depth 1 and is explicitly described as a direct child of the current focus in the graph, synchronized list, details, and automation. Density is a separate `PresentationBand`: twelve children use the inner band, sixteen the middle band, and the bounded remainder the outer band. All retain a minimum 44-DIP effective target. Dark mode uses filled circular folder hubs and smaller file points, with a larger focus point; Light retains outlined folder/file glyphs. Density never changes hierarchy or removes admitted names. Actual descendant previews use semantic depth 2, a smaller subdued point in Dark or folder glyph in Light, a `↳` label prefix, and a structural edge to their admitted parent. Previous focus is a distinct history/orientation node, not a parent.
 
 Structure positions vary deterministically in angle and distance. Known filename extensions group case-insensitively by exact extension, while unknown or missing extensions share a fallback group. This changes spatial proximity only, not acquisition order, counts, containment, or Context meaning. Stable node IDs are the continuity key: surviving nodes receive nearby deterministic slots within their assigned presentation band and type group while their prior coordinates remain the transition origin. Preview placement searches bounded free positions around the real parent and avoids direct-node targets where space permits; hit testing prioritizes direct nodes if targets overlap. On focus navigation the selected child interpolates from its old position to center and the former focus recedes into history context.
 
 Zoom, layout scale, density, presentation band, and interaction importance adjust glyph emphasis without changing semantic relation. Although the shared LOD enum retains `Point` and `Glyph`, the current production policy floors every admitted node at `Labeled`; focus and interaction emphasis use `Focused`. The renderer retains a name for every admitted node whose center lies inside the graph control. It uses measured single-line text, with ellipsis for long names, and places focus first followed by stable node-ID order. A bounded nearest-free-position search moves labels around glyphs and earlier labels. Displaced labels may receive a leader from their glyph periphery; leaders crossing a glyph are suppressed. Zoom and text scale no longer hide an arbitrary label subset. If the viewport cannot hold all measured labels, names remain present and may overlap; the synchronized list remains the full-size reading surface.
 
-The shell reserves graph-coordinate and label-placement space below the top navigation/focus HUD and above the bottom controls (`ScenePadding`), while atmosphere continues across the full client. Structural edges and their junctions stop outside each rendered glyph's envelope, and preview edges retain a visible branch treatment. These geometry rules also apply during scaled motion; they do not add topology or filesystem authority.
+The shell reserves graph-coordinate and label-placement space below the top navigation/focus HUD and above the bottom controls (`ScenePadding`), while atmosphere continues across the full client. Structural edges stop at each rendered glyph's envelope. Dark circles use radius-based endpoints with no extra junction dots; Light retains the folder/file envelopes. Preview edges retain their real parent relationship. These geometry rules also apply during scaled motion; they do not add topology or filesystem authority.
 
 During search, visible matches gain the search accent and unrelated nodes/edges recede. Focusing a result navigates to its folder and pins the match within the 48-node graph budget. The compact result surface remains secondary and dismissible.
 
@@ -259,7 +254,7 @@ The Hybrid layout keeps focus at the same center. Structural parents sit above i
 
 The developer diagnostics overlay is disabled by default. It samples visible nodes, edges, accepted labels, scene budget, zoom/text scale, layout and scene-preparation duration, total render duration, background/edge/glyph/label phases, per-render managed allocations, bounded cache occupancy, data-rain duration/token count, and most recent load duration. Voice adds state plus initialization/capture/transcription/execution duration, transcript length, classification, and safe error category. This is local instrumentation, not telemetry. The separate user-invoked support report is built from fixed safe fields and cannot receive audio, transcript text, model/runtime path, filesystem path, filename, query, content, protocol endpoint, grant, token, or session/node ID. Unexpected provider/model/transport/failure values are reduced to bounded categories before the text reaches the clipboard.
 
-Profiling isolated the Stage 2 search-highlight regression to repeated `FormattedText` construction/measurement plus repeated brush/pen creation. The all-name renderer exposed an additional cost from repeated draw-time text shaping; the current 256-entry LRU stores reusable Avalonia `TextLayout` objects, alongside a 192-entry brush cache and a 384-entry pen cache. Text keys include content, culture, font size/weight, maximum width, and color. Typography derives from immutable layout scale and zoom/text scale, rounded to half-point font sizes rather than following frame-by-frame hover/float displacement; drawing opacity does not create new layouts. Theme and render-scale changes clear the caches, names are part of the key, and LRU capacity bounds stale variants. Folder glyphs reuse one small vector outline; file glyphs remain inexpensive primitives.
+Profiling isolated the Stage 2 search-highlight regression to repeated `FormattedText` construction/measurement plus repeated brush/pen creation. The all-name renderer exposed an additional cost from repeated draw-time text shaping; the current 256-entry LRU stores reusable Avalonia `TextLayout` objects, alongside a 192-entry brush cache and a 384-entry pen cache. Text keys include content, culture, font size/weight, maximum width, and color. Typography derives from immutable layout scale and zoom/text scale, rounded to half-point font sizes rather than following frame-by-frame hover/float displacement; drawing opacity does not create new layouts. Theme and render-scale changes clear the caches, names are part of the key, and LRU capacity bounds stale variants. Dark constellation glyphs are inexpensive ellipse primitives, with deterministic branch accents and preview label strings cached when the scene changes. Two static radial gradient brushes replace the dark decorative network. Light folder glyphs reuse one small vector outline; file glyphs remain inexpensive primitives.
 
 ## Failure behavior
 
@@ -311,7 +306,7 @@ The primary Windows package is an Inno Setup 6.7.3 current-user installer. It pu
 
 ## Graph-first visual shell and non-goals
 
-The graph-first shell keeps session/provider/rendering ownership unchanged while giving `GraphSceneControl` the entire borderless client area, with reserved graph-coordinate space for persistent HUD controls. Root, Back, Up, Trail, Current Focus, modes, provider/theme/list/settings/Sound, Search, zoom, Voice, live status, and secondary panels are angular floating projections; custom chrome retains explicit minimize/maximize/close actions and a draggable/double-clickable title strip. Search is collapsed by default, expands on its trigger or `Ctrl+F`, and continues to use `ExplorerSession` as the only query/result authority. Trail shows up to six actionable named destinations in a bounded scrolling surface. Structure folders, previous-focus nodes, and aggregates enter on the first click; ordinary files select first and require explicit activation, with double-click accepted only for the same node and scene. Context/Hybrid retain selection followed by explicit refocus. Right-click requests chronological Back.
+The graph-first shell keeps session/provider/rendering ownership unchanged while giving `GraphSceneControl` the entire borderless client area, with reserved graph-coordinate space for persistent HUD controls. Root, Back, Up, Trail, Current Focus, modes, provider/theme/list/settings/Sound, Search, zoom, Voice, live status, and secondary panels are rounded floating projections; custom chrome retains explicit minimize/maximize/close actions and a draggable/double-clickable title strip. Search is collapsed by default, expands on its trigger or `Ctrl+F`, and continues to use `ExplorerSession` as the only query/result authority. Trail shows up to six actionable named destinations in a bounded scrolling surface. Structure folders, previous-focus nodes, and aggregates enter on the first click; ordinary files select first and require explicit activation, with double-click accepted only for the same node and scene. Context/Hybrid retain selection followed by explicit refocus. Right-click requests chronological Back.
 
 Details is a terminal/data deck: the actual Type-through-Index, summary, and relationship fields receive their complete text and automation names atomically. Optional visual clipping reveals those fields in sequence; new content replaces the reveal and Reduced motion exposes all fields immediately. There is no duplicate typed command header or per-character live announcement. First run, Structure-empty, Search-no-match, authoritative no-Context, and filter-zero states remain distinct. Search results still take precedence over Details.
 

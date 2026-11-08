@@ -30,3 +30,5 @@ Retain a report only for architecture/product boundary changes, serious regressi
 - [2026-11-07: My Files custom fork](2026-11-07-my-files-fork.md) — standalone saved map, actual interface previews, automated checks and native Windows limits.
 
 - [2026-11-07 Nebulux My Files continuation](2026-11-07-nebulux-my-files.md): theme implementation, source recovery, validation and installer evidence.
+
+- [2026-11-08 Nebula Spatial Explorer](2026-11-08-nebula-spatial-explorer.md): sole spatial interface, constellation appearance, retained interaction contracts and validation boundaries.

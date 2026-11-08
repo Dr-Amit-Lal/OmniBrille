@@ -27,6 +27,22 @@ public sealed class ContrastMathTests
         AssertContrast(resources["LoadingTextBrush"], loadingOverlay, 4.5, theme, "loading text/overlay");
     }
 
+    [Fact]
+    public void SpatialExplorerNebulaResources_MeetTextAndFocusContrastFloors()
+    {
+        var resources = ReadThemeResources("Dark", "MainWindow.axaml");
+        var background = resources["AppBackgroundBrush"];
+        var surface = Composite(resources["SurfaceStrongBrush"], background);
+        foreach (var key in new[] { "PrimaryTextBrush", "SecondaryTextBrush" })
+        {
+            AssertContrast(resources[key], background, 4.5, "Nebula", key + "/background");
+            AssertContrast(resources[key], surface, 4.5, "Nebula", key + "/surface");
+        }
+
+        AssertContrast(resources["AccentBrush"], surface, 3, "Nebula", "focus/surface");
+        AssertContrast(resources["LoadingTextBrush"], Composite(resources["LoadingOverlayBrush"], background), 4.5, "Nebula", "loading text/overlay");
+    }
+
     [Theory]
     [InlineData("Dark")]
     [InlineData("Light")]
@@ -56,10 +72,31 @@ public sealed class ContrastMathTests
         AssertContrast(palette["Text"], background, 4.5, theme, "graph label/background");
     }
 
-    private static Dictionary<string, ParsedColor> ReadThemeResources(string theme)
+    [Fact]
+    public void NebulaBranchAccents_MeetContrastOverTheBrightestAtmosphericWash()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "src", "OmniBrille.Desktop", "Rendering", "ScenePalette.cs"));
+        var start = source.IndexOf("NebulaAccents", StringComparison.Ordinal);
+        var end = source.IndexOf("public static ScenePalette Light", start, StringComparison.Ordinal);
+        var colors = Regex.Matches(source[start..end], "Color\\.Parse\\(\"(?<color>#[0-9A-Fa-f]+)\"\\)")
+            .Select(match => ParsedColor.Parse(match.Groups["color"].Value)).ToArray();
+        Assert.Equal(6, colors.Length);
+        var palette = ReadScenePalette("Dark");
+        foreach (var background in colors.TakeLast(2))
+        {
+            foreach (var accent in colors.Take(4).Concat(new[] { palette["Node"], palette["Context"], palette["ContextEdge"], palette["Search"], palette["Selection"] }))
+            {
+                AssertContrast(Composite(accent, background, GraphSceneControl.MinimumInteractiveOpacity * (250d / 255d)), background, 3, "Nebula", "interactive point/wash");
+            }
+
+            AssertContrast(palette["Text"], background, 4.5, "Nebula", "label/wash");
+        }
+    }
+
+    private static Dictionary<string, ParsedColor> ReadThemeResources(string theme, string filename = "App.axaml")
     {
         var root = FindRepositoryRoot();
-        var document = XDocument.Load(Path.Combine(root, "src", "OmniBrille.Desktop", "App.axaml"));
+        var document = XDocument.Load(Path.Combine(root, "src", "OmniBrille.Desktop", filename));
         var x = XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
         var dictionary = document
             .Descendants()
