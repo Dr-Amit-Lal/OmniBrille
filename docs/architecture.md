@@ -8,6 +8,8 @@ This fork's ordinary launch now opens `MyFilesWindow`, a standalone native-contr
 
 `MyFilesSession` exclusively owns the custom map's selected roots, expanded branches, bounded directory snapshots/pages, selection, pins, search, cancellation and generation checks. It reuses `FileSystemExplorerProvider` per selected root and `ShellFileActivationService` for explicit file opening. `FileMapPathGuard` checks ordinary ancestors including the root before restored reads and file activation. Native Avalonia buttons project nodes and provide keyboard/automation invocation; drawn connectors never acquire data or authorize actions.
 
+My Files appearance resources are scoped to `MyFilesWindow`. Nebulux uses the existing Dark preference, defaults through `JsonVisualPreferencesStore.Load`, and retains saved Light settings. Static icon/connector geometry is decorative; native node buttons remain the input and automation surface. Root colors follow saved order and do not represent inferred file relationships.
+
 `JsonFileMapWorkspaceStore` persists a separate versioned local workspace, including selected local roots, labels, expansion, pins and text size. This is an intentional persistence change in the fork. It never contains connected IDs, grants, content, queries or transcripts. The original `JsonVisualPreferencesStore` contract is unchanged. See [My Files](my-files.md) and [ADR 0002](decisions/0002-standalone-file-map.md).
 
 ```mermaid

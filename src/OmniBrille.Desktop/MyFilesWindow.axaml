@@ -2,22 +2,59 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="OmniBrille.Desktop.MyFilesWindow"
         Title="OmniBrille · My Files" Width="1260" Height="820" MinWidth="820" MinHeight="600"
-        FontSize="18" FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter" RequestedThemeVariant="Light" WindowStartupLocation="CenterScreen">
+        FontSize="18" FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter" RequestedThemeVariant="Dark" WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+          <LinearGradientBrush x:Key="AppBackgroundBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Color="#080D15" Offset="0"/><GradientStop Color="#101C31" Offset="0.48"/><GradientStop Color="#070C13" Offset="1"/>
+          </LinearGradientBrush>
+          <RadialGradientBrush x:Key="SurfaceBrush" Center="50%,48%" GradientOrigin="50%,48%" RadiusX="65%" RadiusY="75%">
+            <GradientStop Color="#182C49" Offset="0"/><GradientStop Color="#101B2D" Offset="0.5"/><GradientStop Color="#0A111D" Offset="1"/>
+          </RadialGradientBrush>
+          <LinearGradientBrush x:Key="NodeSurfaceBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Color="#1C2B3D" Offset="0"/><GradientStop Color="#101A29" Offset="0.45"/><GradientStop Color="#0C1420" Offset="1"/>
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="HomeSurfaceBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#244263" Offset="0"/><GradientStop Color="#102039" Offset="0.45"/><GradientStop Color="#0C192C" Offset="1"/>
+          </LinearGradientBrush>
+          <SolidColorBrush x:Key="SurfaceStrongBrush" Color="#121E2D"/>
+          <SolidColorBrush x:Key="BorderBrush" Color="#526B88"/>
+          <SolidColorBrush x:Key="HairlineBrush" Color="#496783"/>
+          <SolidColorBrush x:Key="AccentBrush" Color="#79CDFF"/>
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#233D59"/>
+          <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F2F5FC"/>
+          <SolidColorBrush x:Key="SecondaryTextBrush" Color="#BDD3E9"/>
+          <SolidColorBrush x:Key="FocusBrush" Color="#FFFFFF"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="NodeSurfaceBrush" Color="#F7FBFF"/>
+          <SolidColorBrush x:Key="HomeSurfaceBrush" Color="#E2F0FC"/>
+          <SolidColorBrush x:Key="SurfaceStrongBrush" Color="#F4FAFF"/>
+          <SolidColorBrush x:Key="FocusBrush" Color="#082B4C"/>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
   <Window.Styles>
-    <Style Selector="Button"><Setter Property="MinHeight" Value="44"/><Setter Property="MinWidth" Value="44"/><Setter Property="Padding" Value="16,9"/><Setter Property="CornerRadius" Value="9"/></Style>
-    <Style Selector="Button:focus-visible /template/ ContentPresenter"><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderThickness" Value="3"/></Style>
-    <Style Selector="Button.mapNode"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="{DynamicResource SurfaceStrongBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="16,12"/></Style>
-    <Style Selector="Button.mapNode.selected"><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderThickness" Value="3"/></Style>
+    <Style Selector="Button"><Setter Property="MinHeight" Value="44"/><Setter Property="MinWidth" Value="44"/><Setter Property="Padding" Value="16,9"/><Setter Property="CornerRadius" Value="11"/><Setter Property="FontWeight" Value="Medium"/><Setter Property="Background" Value="{DynamicResource NodeSurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="BorderThickness" Value="1"/></Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/></Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource NodeSurfaceBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/><Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/><Setter Property="Opacity" Value="0.5"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource HomeSurfaceBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Style>
+    <Style Selector="Button.mapNode"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="{DynamicResource NodeSurfaceBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource NodeAccentBrush}"/><Setter Property="BorderThickness" Value="4,1,1,1"/><Setter Property="Padding" Value="20,15"/><Setter Property="CornerRadius" Value="14"/></Style>
+    <Style Selector="Button.mapNode.selected"><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter Property="BorderThickness" Value="3"/><Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/></Style>
+    <Style Selector="Button:focus-visible /template/ ContentPresenter"><Setter Property="BorderBrush" Value="{DynamicResource FocusBrush}"/><Setter Property="BorderThickness" Value="3"/></Style>
     <Style Selector="TextBox"><Setter Property="MinHeight" Value="44"/></Style>
   </Window.Styles>
   <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="24,20">
     <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
       <StackPanel Spacing="3">
-        <TextBlock Text="My Files" FontSize="30" FontWeight="SemiBold"/>
+        <TextBlock Text="My Files" FontSize="34" FontWeight="Bold" LetterSpacing="0.5"/>
         <TextBlock Text="A familiar place for everything you need." FontSize="16" Foreground="{DynamicResource SecondaryTextBrush}"/>
       </StackPanel>
       <WrapPanel Grid.Column="1" VerticalAlignment="Center">
-        <Button Name="HomeButton" Content="Home" Margin="0,0,8,0" Click="OnHome"/>
+        <Button Name="HomeButton" Classes="primary" Content="Home" Margin="0,0,8,0" Click="OnHome"/>
         <Button Name="BackButton" Content="Back" Margin="0,0,8,0" Click="OnBack" IsEnabled="False"/>
         <Button Name="SearchToggle" Content="Search" Margin="0,0,8,0" Click="OnSearchToggle"/>
         <Button Name="SettingsButton" Content="Settings" Click="OnSettings"/>
@@ -40,11 +77,11 @@
       <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" CornerRadius="16">
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto" Margin="18,14">
-            <TextBlock Name="MapHint" Text="Choose a folder to see its connections." FontSize="15" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}"/>
-            <Button Grid.Column="1" Name="AddFolderButton" Content="+ Add folder" Click="OnAddFolder"/>
+            <TextBlock Name="MapHint" Text="Choose a folder to see its connections." FontSize="15" Margin="0,0,12,0" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}"/>
+            <Button Grid.Column="1" Name="AddFolderButton" Classes="primary" Content="+ Add folder" Click="OnAddFolder"/>
           </Grid>
           <ScrollViewer Name="MapScroll" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-            <Canvas Name="MapCanvas" MinWidth="700" MinHeight="480"/>
+            <Canvas Name="MapCanvas" MinWidth="700" MinHeight="480" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </ScrollViewer>
           <StackPanel Name="Welcome" Grid.Row="1" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
             <TextBlock Text="Start with the places you use most." FontSize="25" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"/>
@@ -79,7 +116,7 @@
             <TextBlock Text="Text size"/>
             <ComboBox Name="TextSizePicker" HorizontalAlignment="Stretch" SelectionChanged="OnTextSizeChanged" AutomationProperties.Name="Text size"><ComboBoxItem Content="Comfortable" Tag="18"/><ComboBoxItem Content="Large" Tag="22"/><ComboBoxItem Content="Extra large" Tag="26"/></ComboBox>
             <TextBlock Text="Appearance"/>
-            <ComboBox Name="ThemePicker" HorizontalAlignment="Stretch" SelectionChanged="OnThemeChanged" AutomationProperties.Name="Appearance"><ComboBoxItem Content="Light"/><ComboBoxItem Content="Dark"/></ComboBox>
+            <ComboBox Name="ThemePicker" HorizontalAlignment="Stretch" SelectionChanged="OnThemeChanged" AutomationProperties.Name="Appearance"><ComboBoxItem Content="Light"/><ComboBoxItem Content="Nebulux (dark)"/></ComboBox>
             <TextBlock Text="Connected folders" FontWeight="SemiBold"/>
             <TextBlock Text="Removing a folder here only removes it from the map." FontSize="15" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryTextBrush}"/>
             <StackPanel Name="RootSettings" Spacing="10"/>

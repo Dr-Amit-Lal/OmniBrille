@@ -39,9 +39,7 @@ public sealed partial class MyFilesWindow : Window, IDisposable
         _session = session ?? new MyFilesSession();
         _startupRoot = startupRoot;
         _preferencesStore = preferencesStore ?? new JsonVisualPreferencesStore();
-        var hasPreferences = preferencesStore is not null || File.Exists(System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniBrille", "visual-preferences.json"));
-        var theme = startupTheme ?? (hasPreferences ? _preferencesStore.Load().Theme : "Light");
+        var theme = startupTheme ?? _preferencesStore.Load().Theme;
         RequestedThemeVariant = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase)
             ? ThemeVariant.Dark : ThemeVariant.Light;
         _session.Changed += OnSessionChanged;
@@ -90,6 +88,58 @@ public sealed partial class MyFilesWindow : Window, IDisposable
     private IBrush Brush(string key) => this.TryFindResource(key, ActualThemeVariant, out var value) && value is IBrush brush
         ? brush : Brushes.Gray;
 
+    private Color RootColor(FileMapNode node)
+    {
+        // Saved root order is the visual identity; descendants inherit their root's color.
+        var index = 0;
+        while (index < _session.State.Roots.Count && _session.State.Roots[index].Path != node.RootPath)
+        {
+            index++;
+        }
+
+        string[] colors = ActualThemeVariant == ThemeVariant.Dark
+            ? ["#81BDFF", "#BC94FF", "#FFB16E", "#63DECE", "#FFD36A", "#F5A1CE"]
+            : ["#2468A8", "#7740B0", "#A65012", "#16766D", "#876000", "#A53371"];
+        return Color.Parse(colors[index % colors.Length]);
+    }
+
+    private void AddConnection(StreamGeometry geometry, Color color)
+    {
+        if (ActualThemeVariant == ThemeVariant.Dark)
+        {
+            MapCanvas.Children.Add(new Avalonia.Controls.Shapes.Path
+            {
+                Data = geometry,
+                Stroke = new SolidColorBrush(color, 0.10),
+                StrokeThickness = 7,
+                IsHitTestVisible = false,
+            });
+        }
+
+        MapCanvas.Children.Add(new Avalonia.Controls.Shapes.Path
+        {
+            Data = geometry,
+            Stroke = new SolidColorBrush(color),
+            StrokeThickness = 2,
+            IsHitTestVisible = false,
+        });
+    }
+
+    private static Avalonia.Controls.Shapes.Path NodeIcon(bool folder, Color color) => new()
+    {
+        Data = Geometry.Parse(folder
+            ? "M 3,7 L 12,7 L 17,12 L 32,12 Q 35,12 35,15 L 35,29 Q 35,32 32,32 L 5,32 Q 2,32 2,29 L 2,10 Q 2,7 3,7 Z"
+            : "M 8,3 L 23,3 L 32,12 L 32,33 L 8,33 Z M 23,3 L 23,12 L 32,12 M 13,19 L 26,19 M 13,25 L 24,25"),
+        Stroke = new SolidColorBrush(color),
+        StrokeThickness = 2.2,
+        Width = 32,
+        Height = 32,
+        Stretch = Stretch.Uniform,
+        IsHitTestVisible = false,
+        VerticalAlignment = VerticalAlignment.Top,
+        Margin = new Thickness(0, 2, 14, 0),
+    };
+
     private void Render()
     {
         if (_disposed)
@@ -137,8 +187,8 @@ public sealed partial class MyFilesWindow : Window, IDisposable
             return;
         }
 
-        var cardWidth = 260d;
-        var cardHeight = 96 + _session.State.TextSize * 2;
+        var cardWidth = 300d;
+        var cardHeight = 120 + _session.State.TextSize * 2;
         double NodeHeight(FileMapNode node) => cardHeight + (node.Expanded && node.PageCount > 1 ? 52 : 0);
         var gap = 22d;
         var positions = new Dictionary<string, Point>(StringComparer.Ordinal);
@@ -174,24 +224,26 @@ public sealed partial class MyFilesWindow : Window, IDisposable
             var rows = (int)Math.Ceiling(nodes.Count / 2d);
             for (var index = 0; index < nodes.Count; index++)
             {
-                positions[nodes[index].Key] = new Point(index < rows ? 32 : 790, 24 + (index % rows) * (cardHeight + 26));
+                positions[nodes[index].Key] = new Point(index < rows ? 32 : 790, 24 + (index % rows) * (cardHeight + 30));
             }
 
-            var center = new Point(450, 24 + (rows * (cardHeight + 26) - 26) / 2 - 46);
+            var center = new Point(471, 24 + (rows * (cardHeight + 30) - 30) / 2 - 46);
             var home = new Border
             {
                 Width = 180,
                 Height = 92,
                 CornerRadius = new CornerRadius(18),
-                Background = Brush("AccentSoftBrush"),
+                Background = Brush("HomeSurfaceBrush"),
                 BorderBrush = Brush("AccentBrush"),
                 BorderThickness = new Thickness(2),
-                Child = new TextBlock { Text = "My Files", FontSize = 24, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                BoxShadow = ActualThemeVariant == ThemeVariant.Dark ? BoxShadows.Parse("0 0 24 1 #4779CDFF") : default,
+                Child = new TextBlock { Text = "My Files", FontSize = 27, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
             };
             Canvas.SetLeft(home, center.X);
             Canvas.SetTop(home, center.Y);
-            foreach (var point in positions.Values)
+            foreach (var node in nodes)
             {
+                var point = positions[node.Key];
                 var onLeft = point.X < center.X;
                 var start = new Point(onLeft ? center.X : center.X + 180, center.Y + 46);
                 var end = new Point(onLeft ? point.X + cardWidth : point.X, point.Y + cardHeight / 2);
@@ -203,11 +255,11 @@ public sealed partial class MyFilesWindow : Window, IDisposable
                     context.EndFigure(false);
                 }
 
-                MapCanvas.Children.Add(new Avalonia.Controls.Shapes.Path { Data = geometry, Stroke = Brush("BorderBrush"), StrokeThickness = 2, IsHitTestVisible = false });
+                AddConnection(geometry, RootColor(node));
             }
 
             MapCanvas.Children.Add(home);
-            y = 24 + rows * (cardHeight + 26);
+            y = 24 + rows * (cardHeight + 30);
         }
 
         MapCanvas.Width = Math.Max(700, positions.Values.Max(p => p.X) + cardWidth + 32);
@@ -231,13 +283,7 @@ public sealed partial class MyFilesWindow : Window, IDisposable
                 context.EndFigure(false);
             }
 
-            MapCanvas.Children.Add(new Avalonia.Controls.Shapes.Path
-            {
-                Data = geometry,
-                Stroke = Brush("BorderBrush"),
-                StrokeThickness = 2,
-                IsHitTestVisible = false,
-            });
+            AddConnection(geometry, RootColor(node));
         }
 
         foreach (var node in nodes)
@@ -245,11 +291,12 @@ public sealed partial class MyFilesWindow : Window, IDisposable
             var position = positions[node.Key];
             var card = new Grid { Width = cardWidth, Height = NodeHeight(node), RowDefinitions = new RowDefinitions("*,Auto") };
             var folder = node.Entry.Kind == ExplorerNodeKind.Folder;
+            var color = RootColor(node);
             var text = new StackPanel { Spacing = 7 };
             text.Children.Add(new TextBlock
             {
                 Text = node.Entry.Name,
-                FontSize = _session.State.TextSize,
+                FontSize = overview ? _session.State.TextSize + 6 : _session.State.TextSize,
                 FontWeight = FontWeight.SemiBold,
                 TextWrapping = TextWrapping.Wrap,
                 MaxLines = 3,
@@ -261,7 +308,12 @@ public sealed partial class MyFilesWindow : Window, IDisposable
                 FontSize = 14,
                 Foreground = Brush("SecondaryTextBrush"),
             });
-            var button = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+            var content = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), VerticalAlignment = VerticalAlignment.Center };
+            content.Children.Add(NodeIcon(folder, color));
+            Grid.SetColumn(text, 1);
+            content.Children.Add(text);
+            var button = new Button { Content = content, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+            button.Resources["NodeAccentBrush"] = new SolidColorBrush(color);
             button.Classes.Add("mapNode");
             if (_session.SelectedNode?.Key == node.Key)
             {
@@ -272,7 +324,16 @@ public sealed partial class MyFilesWindow : Window, IDisposable
             AutomationProperties.SetHelpText(button, node.Entry.Path);
             ToolTip.SetTip(button, node.Entry.Path);
             button.Click += async (_, _) => await ActivateNodeAsync(node);
-            card.Children.Add(button);
+            card.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(14),
+                BoxShadow = ActualThemeVariant == ThemeVariant.Dark ? new BoxShadows(new BoxShadow
+                {
+                    Blur = 18,
+                    Color = Color.FromArgb(28, color.R, color.G, color.B),
+                }) : default,
+                Child = button,
+            });
             _nodeButtons[node.Key] = button;
             if (folder && node.Expanded && node.PageCount > 1)
             {

@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using OmniBrille.Core;
 using OmniBrille.Desktop;
@@ -15,11 +16,13 @@ namespace OmniBrille.HeadlessTests;
 
 public sealed class MyFilesWindowHeadlessTests
 {
-    [AvaloniaFact]
-    public async Task AutomationInvoke_ExpandsRealFolderAndExposesCompleteFileName()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task AutomationInvoke_ExpandsRealFolderAndExposesCompleteFileName(string theme)
     {
         using var fixture = new MapFixture();
-        using var window = fixture.CreateWindow();
+        using var window = fixture.CreateWindow(theme);
         window.Show();
         await ReadyAsync(window, fixture.Store.Workspace.Roots.Count);
 
@@ -43,11 +46,13 @@ public sealed class MyFilesWindowHeadlessTests
         Assert.Equal(0, fixture.Activation.OpenCount);
     }
 
-    [AvaloniaFact]
-    public async Task FileSelection_OpensOnlyThroughExplicitOpenAndCanPinWithoutMovingFile()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task FileSelection_OpensOnlyThroughExplicitOpenAndCanPinWithoutMovingFile(string theme)
     {
         using var fixture = new MapFixture(expanded: true);
-        using var window = fixture.CreateWindow();
+        using var window = fixture.CreateWindow(theme);
         window.Show();
         await ReadyAsync(window, 6);
         await WaitUntilAsync(() => window.Session.VisibleNodes.Any(node => node.Entry.Path == fixture.Syllabus));
@@ -90,11 +95,13 @@ public sealed class MyFilesWindowHeadlessTests
         Assert.Contains("collapsed", ControlAutomationPeer.CreatePeerForElement(NodeButton(window, "Database Management")).GetName(), StringComparison.Ordinal);
     }
 
-    [AvaloniaFact]
-    public async Task MinimumWindow_LargeTextKeepsPrimaryActionsReachableAndNamesReadable()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task MinimumWindow_LargeTextKeepsPrimaryActionsReachableAndNamesReadable(string theme)
     {
         using var fixture = new MapFixture(expanded: true, textSize: 26);
-        using var window = fixture.CreateWindow();
+        using var window = fixture.CreateWindow(theme);
         window.Width = window.MinWidth;
         window.Height = window.MinHeight;
         window.Show();
@@ -117,6 +124,9 @@ public sealed class MyFilesWindowHeadlessTests
         var label = file.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == Path.GetFileName(fixture.Syllabus));
         Assert.Equal(26, label.FontSize);
         Assert.Equal(TextWrapping.Wrap, label.TextWrapping);
+        var labelTop = label.TranslatePoint(default, file)!.Value;
+        Assert.InRange(labelTop.Y, 0, file.Bounds.Height - label.Bounds.Height);
+        Assert.InRange(labelTop.X, 0, file.Bounds.Width - label.Bounds.Width);
         Assert.Contains(Path.GetFileName(fixture.Syllabus), AutomationProperties.GetName(file), StringComparison.Ordinal);
         Assert.InRange(MapButtons(window).Count(), 1, MyFilesSession.MaximumVisibleNodes);
     }
@@ -140,18 +150,92 @@ public sealed class MyFilesWindowHeadlessTests
     }
 
     [AvaloniaTheory]
-    [InlineData("my-files-first-run", false, false)]
-    [InlineData("my-files-home", true, false)]
-    [InlineData("my-files-expanded", true, true)]
-    public async Task RenderedMyFilesEvidence(string name, bool configured, bool expanded)
+    [InlineData(null, null, "Dark")]
+    [InlineData(null, "Light", "Light")]
+    [InlineData("Dark", "Light", "Dark")]
+    [InlineData("Light", "Dark", "Light")]
+    public async Task Appearance_UsesSavedPreferenceOrDefaultUnlessStartupOverridesIt(string? startupTheme, string? savedTheme, string expectedTheme)
     {
-        using var fixture = new MapFixture(expanded);
+        using var fixture = new MapFixture();
+        var preferences = new MemoryPreferencesStore(savedTheme is null ? new VisualPreferences() : new VisualPreferences(Theme: savedTheme));
+        using var window = fixture.CreateWindow(startupTheme, preferences);
+        window.Show();
+        await ReadyAsync(window, 6);
+
+        Assert.Equal(expectedTheme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light, window.ActualThemeVariant);
+        Assert.Equal(expectedTheme == "Dark" ? 1 : 0, window.FindControl<ComboBox>("ThemePicker")!.SelectedIndex);
+        Assert.Equal(6, MapButtons(window).Count());
+    }
+
+    [AvaloniaFact]
+    public async Task AppearanceToggle_RecolorsMapAndPersistsWithoutChangingWorkspace()
+    {
+        using var fixture = new MapFixture(expanded: true);
+        var preferences = new MemoryPreferencesStore(new VisualPreferences(Theme: "Light"));
+        using var window = fixture.CreateWindow(null, preferences);
+        window.Show();
+        await ReadyAsync(window, 6);
+        await WaitUntilAsync(() => window.Session.VisibleNodes.Any(node => node.Entry.Path == fixture.Syllabus));
+        Invoke(NodeButton(window, Path.GetFileName(fixture.Syllabus)));
+        await WaitUntilAsync(() => window.Session.SelectedNode?.Entry.Path == fixture.Syllabus);
+        Invoke(window.FindControl<Button>("PinFileButton")!);
+        await WaitUntilAsync(() => window.Session.State.Pins.Count == 1);
+        var roots = window.Session.State.Roots.ToArray();
+        var expanded = window.Session.State.ExpandedFolders.ToArray();
+        var pins = window.Session.State.Pins.ToArray();
+        Invoke(window.FindControl<Button>("SettingsButton")!);
+        window.UpdateLayout();
+        var lightText = Assert.IsAssignableFrom<ISolidColorBrush>(NodeLabel(window, "Teaching").Foreground).Color;
+
+        var picker = window.FindControl<ComboBox>("ThemePicker")!;
+        picker.SelectedIndex = 1;
+        window.UpdateLayout();
+        Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+        Assert.Equal("Dark", preferences.Load().Theme);
+        Assert.NotEqual(lightText, Assert.IsAssignableFrom<ISolidColorBrush>(NodeLabel(window, "Teaching").Foreground).Color);
+        Assert.Equal(roots, window.Session.State.Roots);
+        Assert.Equal(expanded, window.Session.State.ExpandedFolders);
+        Assert.Equal(pins, window.Session.State.Pins);
+        Assert.Equal(fixture.Syllabus, window.Session.SelectedNode?.Entry.Path);
+        Assert.Equal(0, fixture.Activation.OpenCount);
+
+        picker.SelectedIndex = 0;
+        window.UpdateLayout();
+        Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant);
+        Assert.Equal("Light", preferences.Load().Theme);
+        Assert.Equal(lightText, Assert.IsAssignableFrom<ISolidColorBrush>(NodeLabel(window, "Teaching").Foreground).Color);
+        picker.SelectedIndex = 1;
+        window.Close();
+
+        using var reopened = fixture.CreateWindow(null, preferences);
+        reopened.Show();
+        await ReadyAsync(reopened, 6);
+        Assert.Equal(ThemeVariant.Dark, reopened.ActualThemeVariant);
+        Assert.Equal(roots, reopened.Session.State.Roots);
+        Assert.Equal(expanded, reopened.Session.State.ExpandedFolders);
+        Assert.Equal(pins, reopened.Session.State.Pins);
+        Assert.True(File.Exists(fixture.Syllabus));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("my-files-first-run", false, false, "Light", false, 18)]
+    [InlineData("my-files-home", true, false, "Light", false, 18)]
+    [InlineData("my-files-expanded", true, true, "Light", false, 18)]
+    [InlineData("nebulux-first-run", false, false, "Dark", false, 18)]
+    [InlineData("nebulux-home", true, false, "Dark", false, 18)]
+    [InlineData("nebulux-expanded", true, true, "Dark", false, 18)]
+    [InlineData("nebulux-settings", true, false, "Dark", true, 18)]
+    [InlineData("nebulux-home-extra-large", true, false, "Dark", false, 26)]
+    [InlineData("nebulux-expanded-extra-large", true, true, "Dark", false, 26)]
+    public async Task RenderedMyFilesEvidence(string name, bool configured, bool expanded, string theme, bool settings, double textSize)
+    {
+        using var fixture = new MapFixture(expanded, textSize);
         if (!configured)
         {
             fixture.Store.Workspace = FileMapWorkspace.Empty;
         }
 
-        using var window = fixture.CreateWindow();
+        using var window = fixture.CreateWindow(theme);
         window.Width = 1400;
         window.Height = 900;
         window.Show();
@@ -159,6 +243,12 @@ public sealed class MyFilesWindowHeadlessTests
         if (expanded)
         {
             await WaitUntilAsync(() => window.Session.VisibleNodes.Any(node => node.Entry.Path == fixture.Syllabus));
+        }
+
+        if (settings)
+        {
+            Invoke(window.FindControl<Button>("SettingsButton")!);
+            Assert.True(window.FindControl<Border>("SettingsPanel")!.IsVisible);
         }
 
         window.UpdateLayout();
@@ -179,6 +269,9 @@ public sealed class MyFilesWindowHeadlessTests
 
     private static Button NodeButton(MyFilesWindow window, string name) =>
         Assert.Single(MapButtons(window), button => AutomationProperties.GetName(button)?.StartsWith(name + ",", StringComparison.Ordinal) == true);
+
+    private static TextBlock NodeLabel(MyFilesWindow window, string name) =>
+        Assert.Single(NodeButton(window, name).GetVisualDescendants().OfType<TextBlock>(), text => text.Text == name);
 
     private static void Invoke(Button button) =>
         Assert.IsAssignableFrom<IInvokeProvider>(ControlAutomationPeer.CreatePeerForElement(button).GetProvider<IInvokeProvider>()).Invoke();
@@ -213,7 +306,9 @@ public sealed class MyFilesWindowHeadlessTests
 
     private sealed class MemoryPreferencesStore : IVisualPreferencesStore
     {
-        private VisualPreferences _preferences = new(Theme: "Light");
+        private VisualPreferences _preferences;
+
+        public MemoryPreferencesStore(VisualPreferences? preferences = null) => _preferences = preferences ?? new VisualPreferences();
 
         public VisualPreferences Load() => _preferences;
 
@@ -266,8 +361,8 @@ public sealed class MyFilesWindowHeadlessTests
         public MemoryWorkspaceStore Store { get; } = new();
         public RecordingFileActivationService Activation { get; } = new();
 
-        public MyFilesWindow CreateWindow() => new(startupTheme: "Light",
-            session: new MyFilesSession(Store, Activation), preferencesStore: new MemoryPreferencesStore());
+        public MyFilesWindow CreateWindow(string? startupTheme = "Light", IVisualPreferencesStore? preferences = null) => new(startupTheme: startupTheme,
+            session: new MyFilesSession(Store, Activation), preferencesStore: preferences ?? new MemoryPreferencesStore());
 
         public void Dispose() => Directory.Delete(_folder, recursive: true);
     }

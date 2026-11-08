@@ -2,7 +2,7 @@
 
 This fork opens to **My Files**, a simple visual map of folders you choose. It adds large readable cards, branches that expand in place, Current Work pins, name search, and a saved local workspace. Files stay in their original locations.
 
-**Custom preview: `1.2.0-myfiles.1`.** The upstream v1.2.0 installer linked below does **not** include this interface. A [Windows installer ZIP](https://github.com/Dr-Amit-Lal/OmniBrille/actions/runs/42425057366/artifacts/13594679261) is available from the passing GitHub Actions run through November 21, 2026 (GitHub sign-in required). It is unsigned and has not undergone a manual installed-Windows acceptance check. You can also build this branch using the commands below. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
+**Custom preview: `1.2.0-myfiles.2` (Nebulux).** My Files now uses the approved dark glass appearance with colored folder branches and outline icons. New installs start in Nebulux; saved Light preferences carry forward. The [Windows installer build](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the custom installer ZIP after successful validation (GitHub sign-in required). The upstream v1.2.0 installer below does **not** include this interface. Custom preview packages are unsigned; Windows may show Unknown Publisher or SmartScreen. Native interactive Windows acceptance remains separate from build checks. The original explorer remains available from **Settings → Advanced explorer** or `--advanced`; OmniSorSe handoffs continue to open the original explorer.
 
 ## Using My Files
 
@@ -17,9 +17,9 @@ Only explicitly chosen folders are used. The local workspace remembers folder pa
 
 Actual Avalonia software renders with synthetic example folders. First launch asks you to choose locations; these screenshots do not come from an installed Windows release.
 
-![My Files home map](docs/assets/screenshots/my-files/my-files-home.png)
+![Nebulux My Files home map](docs/assets/screenshots/my-files/nebulux-home.png)
 
-[First launch](docs/assets/screenshots/my-files/my-files-first-run.png) · [Expanded Teaching branch](docs/assets/screenshots/my-files/my-files-expanded.png)
+[First launch](docs/assets/screenshots/my-files/nebulux-first-run.png) · [Expanded Teaching branch](docs/assets/screenshots/my-files/nebulux-expanded.png) · [Settings](docs/assets/screenshots/my-files/nebulux-settings.png) · [Light appearance](docs/assets/screenshots/my-files/nebulux-light-home.png)
 
 See [My Files design and boundaries](docs/my-files.md) for limits, build instructions, and verification scope. Original project attribution and third-party licenses are retained.
 
