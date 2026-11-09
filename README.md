@@ -1,6 +1,6 @@
 # OmniBrille · Spatial Explorer
 
-A local folder workspace shown as connected, glowing folder and document icons. **Custom preview: `1.2.0-nebula.7`.** Spatial Explorer is the only interface.
+A local folder workspace shown as connected, glowing folder and document icons. **Custom preview: `1.2.0-nebula.8`.** Spatial Explorer is the only interface.
 
 Choose up to **8 workspace folders** and see their immediate contents together. Open a folder to explore its children; **Back** and **Up** move one containing folder toward the workspace overview. **Workspace** returns to all chosen roots. Your files stay where they are.
 
@@ -10,13 +10,15 @@ Search looks for names and paths across your chosen workspace folders. Small mov
 
 Compact folders retain their original gentle floating motion, smooth hover enlargement, glow and shine. A local ring emphasizes the hovered or selected item. Thin, muted straight connections stay clear of icons and labels; hover adds no crossing routes. Navigation transitions run when the displayed scene changes.
 
+While Spatial Explorer is running, a small tab appears on the left edge of its screen when the window is minimized or another app is in front. Click the tab to bring the workspace back. Closing the window exits normally and removes the tab; the app does not start automatically with Windows.
+
 Workspace roots, pins and the current location are saved locally and restored on launch. Folder-change notifications and periodic bounded refresh keep the visible view current while the app is open. There is no whole-computer index, document-content analysis, microphone, sound output, OmniSorSe connection, Context or Hybrid mode.
 
 ## Install on Windows
 
 The [custom Windows build workflow](https://github.com/Dr-Amit-Lal/OmniBrille/actions/workflows/ci.yml) produces the installer ZIP when its checks succeed. Use the artifact for the intended commit and version; a workflow link is not evidence that a particular build passed.
 
-1. Download the matching `OmniBrille-1.2.0-nebula.7-win-x64-setup.exe`, checksum and manifest from that build.
+1. Download the matching `OmniBrille-1.2.0-nebula.8-win-x64-setup.exe`, checksum and manifest from that build.
 2. Compare its SHA-256 with the sidecar and manifest, then run the installer as your normal Windows user.
 3. Open **OmniBrille Spatial Explorer** from the Start Menu. Choose folders on first use; previously saved explicit roots and pins migrate automatically.
 
@@ -54,6 +56,6 @@ dotnet run --project .\src\OmniBrille.Desktop\OmniBrille.Desktop.csproj
 
 ## Attribution and history
 
-This fork derives from OmniBrille. The [upstream v1.2.0 release](https://github.com/nishdel/OmniBrille/releases/tag/v1.2.0) and [its original README](https://github.com/nishdel/OmniBrille/blob/v1.2.0/README.md) describe the earlier product, including features removed from this custom workspace. Its installer does not contain this design. Earlier screenshots and run reports retain their original scope and do not qualify nebula.7.
+This fork derives from OmniBrille. The [upstream v1.2.0 release](https://github.com/nishdel/OmniBrille/releases/tag/v1.2.0) and [its original README](https://github.com/nishdel/OmniBrille/blob/v1.2.0/README.md) describe the earlier product, including features removed from this custom workspace. Its installer does not contain this design. Earlier screenshots and run reports retain their original scope and do not qualify nebula.8.
 
 Project code uses the **MIT License**: see [LICENSE](LICENSE), [third-party notices](THIRD-PARTY-NOTICES.txt), and [component licenses](THIRD-PARTY-LICENSES). The Windows renderer retains the reviewed DNG-free SkiaSharp native asset and [its build provenance](docs/native-skia.md).

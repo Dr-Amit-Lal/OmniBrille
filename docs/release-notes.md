@@ -1,19 +1,20 @@
-# OmniBrille 1.2.0-nebula.7 · Spatial Explorer
+# OmniBrille 1.2.0-nebula.8 · Spatial Explorer
 
-This update adds indicators along search-result connections and direct file opening while keeping the calmer spatial layout and saved local folder workspace. Generated artifact notes bind this guidance to the exact installer hash and commit. No test, publication or native acceptance result is implied by this template.
+This update adds a left-edge tab for bringing the running workspace back while keeping search indicators, direct file opening and saved folders. Generated artifact notes bind this guidance to the exact installer hash and commit. No test, publication or native acceptance result is implied by this template.
 
 ## Install
 
-Use `OmniBrille-1.2.0-nebula.7-win-x64-setup.exe` and its matching checksum/manifest from the custom build. Run as your normal Windows user, then open **OmniBrille Spatial Explorer** from Start Menu. The self-contained package installs under `%LOCALAPPDATA%\Programs\OmniBrille`; no administrator rights or separate .NET runtime are required.
+Use `OmniBrille-1.2.0-nebula.8-win-x64-setup.exe` and its matching checksum/manifest from the custom build. Run as your normal Windows user, then open **OmniBrille Spatial Explorer** from Start Menu. The self-contained package installs under `%LOCALAPPDATA%\Programs\OmniBrille`; no administrator rights or separate .NET runtime are required.
 
 ```powershell
-Get-FileHash .\OmniBrille-1.2.0-nebula.7-win-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\OmniBrille-1.2.0-nebula.8-win-x64-setup.exe -Algorithm SHA256
 ```
 
 Preview packages are **unsigned**. Windows may show Unknown Publisher or SmartScreen. Compare the checksum with the matching artifact files; this verifies bytes, not publisher identity.
 
 ## Changes
 
+- A small left-edge tab appears while the workspace is minimized or behind another app. Click it to restore the workspace; closing the app removes it. No automatic startup is added.
 - Save up to 8 chosen roots and 12 independent folder pins in one local workspace.
 - Explore separate root clusters; Back/Up moves toward the workspace through real containing folders.
 - Use smaller folders and labels with muted, thin straight connections that stay clear of text.

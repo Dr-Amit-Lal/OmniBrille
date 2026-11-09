@@ -17,6 +17,67 @@ namespace OmniBrille.HeadlessTests;
 public sealed class WorkspaceWindowTests
 {
     [AvaloniaFact]
+    public async Task EdgeTabRestoresTheMinimizedWorkspaceAndClosesWithIt()
+    {
+        using var fixture = new WorkspaceFixture();
+        fixture.Save();
+        using var window = fixture.CreateWindow();
+        await ShowAsync(window);
+        Click(PinButton(window, fixture.Letters));
+        await WaitUntilAsync(() => window.Session.CurrentPath == fixture.Letters && !window.Session.IsBusy);
+        window.WindowState = WindowState.Maximized;
+        window.WindowState = WindowState.Minimized;
+        await WaitUntilAsync(() => window.EdgeDock?.IsVisible == true);
+        var dock = Assert.IsType<EdgeDockWindow>(window.EdgeDock);
+        Assert.True(dock.Topmost);
+        Assert.False(dock.ShowInTaskbar);
+        Assert.Equal(window.Screens.Primary!.WorkingArea.X, dock.Position.X);
+        using (var frame = dock.CaptureRenderedFrame())
+        {
+            var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
+            if (!string.IsNullOrEmpty(output))
+            {
+                Directory.CreateDirectory(output);
+                Assert.NotNull(frame);
+                frame.Save(Path.Combine(output, "left-edge-tab.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        var point = new Point(dock.Bounds.Width / 2, dock.Bounds.Height / 2);
+        dock.MouseDown(point, MouseButton.Left);
+        dock.MouseUp(point, MouseButton.Left);
+        await WaitUntilAsync(() => window.WindowState == WindowState.Maximized && !dock.IsVisible);
+        Assert.Equal(fixture.Letters, window.Session.CurrentPath);
+        Assert.Equal(3, window.Session.State.Roots.Count);
+        Assert.Equal(2, window.Session.State.Pins.Count);
+
+        window.WindowState = WindowState.Minimized;
+        await WaitUntilAsync(() => dock.IsVisible);
+        window.Close();
+        Assert.False(dock.IsVisible);
+        Assert.Null(window.EdgeDock);
+    }
+
+    [AvaloniaFact]
+    public async Task EdgeTabCanRecallAnUnminimizedWindowWhenDeactivated()
+    {
+        using var fixture = new WorkspaceFixture();
+        fixture.Save();
+        using var window = fixture.CreateWindow();
+        await ShowAsync(window);
+        // Headless windows do not transfer OS activation; exercise the event handler directly.
+        window.OnEdgeDeactivated(window, EventArgs.Empty);
+        await WaitUntilAsync(() => window.EdgeDock?.IsVisible == true);
+        var dock = Assert.IsType<EdgeDockWindow>(window.EdgeDock);
+        using (dock.CaptureRenderedFrame()) { }
+        var point = new Point(dock.Bounds.Width / 2, dock.Bounds.Height / 2);
+        dock.MouseDown(point, MouseButton.Left);
+        dock.MouseUp(point, MouseButton.Left);
+        await WaitUntilAsync(() => !dock.IsVisible);
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.True(window.Session.IsOverview);
+    }
+
+    [AvaloniaFact]
     public async Task Restart_RestoresThreeRootsPinsAndCurrentFolderFromJson()
     {
         using var fixture = new WorkspaceFixture();

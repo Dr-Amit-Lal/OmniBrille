@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OmniBrille.HeadlessTests" />
     <ProjectReference Include="..\OmniBrille.Core\OmniBrille.Core.csproj" />
     <ProjectReference Include="..\OmniBrille.Infrastructure\OmniBrille.Infrastructure.csproj" />
   </ItemGroup>

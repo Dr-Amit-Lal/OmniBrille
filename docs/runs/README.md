@@ -11,6 +11,8 @@ Retain a report only for architecture/product boundary changes, serious regressi
 
 ## Reports
 
+- [2026-11-09 Left-edge workspace tab](2026-11-09-left-edge-tab.md): a non-taskbar launcher restores the running workspace from the screen edge, with native installer-probe coverage planned.
+
 - [2026-11-09 Search indicators and direct file opening](2026-11-09-search-indicators-file-opening.md): moving points on existing search connections, explicit file-result opening and retained location navigation.
 
 - [2026-11-09 Restored spatial effects](2026-11-09-restored-spatial-effects.md): original gentle motion, smooth hover response and glow restored within the compact layout; exact-build qualification pending at documentation handoff.

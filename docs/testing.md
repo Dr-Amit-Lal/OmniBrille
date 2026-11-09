@@ -1,6 +1,6 @@
 # Testing and acceptance
 
-Current target: local spatial workspace `1.2.0-nebula.7`. Configured checks are not proof of a passing run. Record the exact commit/artifact and observed result; preserve earlier reports with their original scope.
+Current target: local spatial workspace `1.2.0-nebula.8`. Configured checks are not proof of a passing run. Record the exact commit/artifact and observed result; preserve earlier reports with their original scope.
 
 ## Automated source checks
 
@@ -23,6 +23,7 @@ For release work, use `build/verify-release.ps1` and the Windows workflows for d
 Use non-private fixture folders. Record installer SHA-256, Windows version, display/text scaling and actions/results. Exercise:
 
 - several chosen roots, overlapping roots, unavailable/remounted drives and relaunch restoration;
+- minimize and switch away from the workspace, click the left-edge tab to restore it, move between displays and close the app;
 - pin add/reorder/remove, outside-root excursions and return to Workspace;
 - parent-based Back/Up, paging, file selection/Open file and blocked file types;
 - search across chosen roots, indicators on existing matching connections, hover/keyboard previews without extra branches, direct file opening and Show in map, clear/close, stale-result races and refresh;

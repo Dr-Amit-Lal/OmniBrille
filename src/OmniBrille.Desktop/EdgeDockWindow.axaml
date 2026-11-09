@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OmniBrille.Desktop.EdgeDockWindow" x:CompileBindings="False"
+        Title="Spatial Explorer tab" Width="44" Height="126" FontFamily="avares://Avalonia.Fonts.Inter/Assets#Inter"
+        MinWidth="44" MinHeight="126" MaxWidth="44" MaxHeight="126"
+        CanResize="False" CanMinimize="False" CanMaximize="False"
+        WindowDecorations="None" WindowStartupLocation="Manual"
+        Background="Transparent" TransparencyLevelHint="Transparent"
+        ShowActivated="False" ShowInTaskbar="False" Topmost="True">
+  <Window.Styles>
+    <Style Selector="Button#DockOpen:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#F1223049" />
+      <Setter Property="BorderBrush" Value="#C6DBFF" />
+    </Style>
+    <Style Selector="Button#DockOpen:focus-visible /template/ ContentPresenter">
+      <Setter Property="BorderBrush" Value="#E5F0FF" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+  </Window.Styles>
+  <Button x:Name="DockOpen" Click="OnOpenClick" Padding="0" MinWidth="44" MinHeight="126"
+          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+          HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+          Background="#ED141E30" BorderBrush="#8AA8D5" BorderThickness="0,1,1,1"
+          CornerRadius="0,12,12,0" ToolTip.Tip="Open Spatial Explorer"
+          AutomationProperties.Name="Open Spatial Explorer">
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+      <Path Width="25" Height="20" Stretch="Uniform" Stroke="#A9CAFF" StrokeThickness="1.4" Fill="Transparent"
+            Data="M 2,3 L 9,3 L 12,6 L 21,6 L 21,8 L 24,8 L 21,19 L 3,19 Z M 3,19 L 2,8 L 24,8" />
+      <TextBlock Text="›" Foreground="#DCE9FF" FontSize="25"
+                 HorizontalAlignment="Center" />
+    </StackPanel>
+  </Button>
+</Window>

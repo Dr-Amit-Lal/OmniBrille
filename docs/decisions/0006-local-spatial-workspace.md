@@ -39,3 +39,7 @@ The owner clarified that the layout cleanup should preserve the original motion 
 ## Nebula.7 search indicators and file activation
 
 The owner clarified that search indicators should follow the existing connections. Moving points now travel only on visible matching edge segments, and a hovered or selected result emphasizes its visible ancestor path. Their glow clears glyph and label exclusions; reduced motion leaves them stationary. No branches or extra connecting lines are added. Double-click or Enter on a file result opens it through the same guarded activation service as a graph file; a separate Show in map action retains location navigation. This supersedes the nebula.6 decision to remove particles while preserving its clean connections.
+
+## Nebula.8 edge tab
+
+When the running workspace is minimized or inactive, a small topmost, non-taskbar tab sits at the left edge of its display's working area. Clicking it restores the existing main window and its previous window state. It closes with the main window and does not add autostart, persisted settings, reserved desktop space or another workspace session.

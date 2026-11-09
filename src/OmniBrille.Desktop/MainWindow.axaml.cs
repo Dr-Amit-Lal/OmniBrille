@@ -82,8 +82,10 @@ public sealed partial class MainWindow : Window, IDisposable
         SearchResultsList.AddHandler(KeyDownEvent, OnSearchResultsKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
         SearchBox.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
         SizeChanged += (_, _) => UpdateView();
-        Activated += (_, _) => GraphScene.SetMotionActivity(true);
-        Deactivated += (_, _) => GraphScene.SetMotionActivity(false);
+        Activated += (_, _) => { RememberEdgeDockScreen(); _edgeDock?.Hide(); GraphScene.SetMotionActivity(true); };
+        Deactivated += OnEdgeDeactivated;
+        PropertyChanged += OnEdgeWindowStateChanged;
+        PositionChanged += OnEdgePositionChanged;
         _searchTimer.Tick += async (_, _) => await RunCurrentSearchAsync();
         _refreshTimer.Tick += async (_, _) => await RefreshPendingAsync();
         _recheckTimer.Tick += (_, _) =>
@@ -93,7 +95,7 @@ public sealed partial class MainWindow : Window, IDisposable
             QueueRefresh();
         };
         InitializePinDragging();
-        Opened += (_, _) => Initialization = InitializeAsync();
+        Opened += (_, _) => { StartEdgeDock(); Initialization = InitializeAsync(); };
         Closed += (_, _) => Dispose();
         UpdateView();
     }
@@ -523,6 +525,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (_disposed) { return; }
         _disposed = true;
+        StopEdgeDock();
         _session.Changed -= OnSessionChanged;
         _searchTimer.Stop();
         _refreshTimer.Stop();

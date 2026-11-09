@@ -24,10 +24,10 @@ public sealed class PackagingMetadataTests
         var installer = File.ReadAllText(Path.Combine(root, "installer", "OmniBrille.iss"));
 
         Assert.Equal("1.2.0", document.Descendants("VersionPrefix").Single().Value);
-        Assert.Equal("nebula.7", document.Descendants("VersionSuffix").Single().Value);
+        Assert.Equal("nebula.8", document.Descendants("VersionSuffix").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("FileVersion").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("AssemblyVersion").Single().Value);
-        Assert.Contains("#define AppVersion \"1.2.0-nebula.7\"", installer, StringComparison.Ordinal);
+        Assert.Contains("#define AppVersion \"1.2.0-nebula.8\"", installer, StringComparison.Ordinal);
         Assert.Contains("#define NumericVersion \"1.2.0.0\"", installer, StringComparison.Ordinal);
         Assert.Equal("OmniBrille", document.Descendants("Product").Single().Value);
         Assert.Equal("MIT", document.Descendants("PackageLicenseExpression").Single().Value);

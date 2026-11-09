@@ -1,12 +1,13 @@
 # Spatial workspace architecture
 
-Current contract: **`1.2.0-nebula.7`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
+Current contract: **`1.2.0-nebula.8`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
 
 ## Components
 
 | Owner | Responsibility |
 | --- | --- |
 | [MainWindow](../src/OmniBrille.Desktop/MainWindow.axaml.cs) | Composition, picker actions, sidebar, keyboard, view reservation, filesystem watchers and refresh timers |
+| [EdgeDockWindow](../src/OmniBrille.Desktop/EdgeDockWindow.axaml.cs) and [MainWindow.EdgeDock](../src/OmniBrille.Desktop/MainWindow.EdgeDock.cs) | Left-edge launcher shown while the running workspace is minimized or inactive; restores the same window and closes with it |
 | [SpatialWorkspaceSession](../src/OmniBrille.Desktop/Presentation/SpatialWorkspaceSession.cs) | Saved-root authority, hierarchy navigation, bounded scene construction, search, transient result previews, selection and file activation |
 | [SpatialWorkspace](../src/OmniBrille.Core/SpatialWorkspace.cs) | Normalized local roots, independent pins and authorized current location; maximum 8 roots and 12 pins |
 | [JsonSpatialWorkspaceStore](../src/OmniBrille.Infrastructure/JsonSpatialWorkspaceStore.cs) | Bounded JSON persistence, atomic replacement and one-time legacy migration |
@@ -17,6 +18,7 @@ Current contract: **`1.2.0-nebula.7`**, one local-only `MainWindow`. The former 
 
 ```mermaid
 flowchart TD
+    Dock["Left-edge launcher"] --> UI
     UI["MainWindow actions and refresh"] --> Session["SpatialWorkspaceSession"]
     Session --> Store["Local workspace JSON"]
     Session --> Guard["Root and entry validation"]
@@ -69,6 +71,8 @@ Thin straight connections keep constant color and width across hover/selection. 
 While the window is open, recursive `FileSystemWatcher` instances monitor only chosen roots. Events coalesce into an 850 ms refresh interval without restarting the timer for every event; a 20-second timer reconciles watchers and requests a bounded refresh to recover missed events and returning drives. Refresh defers while navigation/search is busy. `Ctrl+R` requests refresh explicitly. This is live view maintenance, not a persistent index, whole-machine scan or background service. Pins outside chosen roots do not add watchers.
 
 Window close disposes watchers/timers and cancels session work. Hidden controls do not stop refresh or change roots/query/location. The shell recalculates reserved graph space when hidden/collapsed; hiding leaves a search field and restore button. Submitting minimal search or pressing `Ctrl+F` shows Search results while keeping normal window controls hidden. No hide/collapse setting is persisted.
+
+An independent, non-taskbar topmost tab is shown at the left of the current display's working area while the main window is minimized or inactive. Clicking it restores the last normal/maximized state and activates the existing workspace. It does not reserve desktop space, change saved paths, start the application at login, or keep the process alive after the main window closes. Display changes reselect an available screen. On unsupported desktop window managers, placement and foreground behavior require separate validation.
 
 ## Authority and evidence limits
 

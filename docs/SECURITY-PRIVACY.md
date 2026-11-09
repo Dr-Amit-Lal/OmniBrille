@@ -1,6 +1,6 @@
 # Security and privacy posture
 
-`1.2.0-nebula.7` is a local-only folder workspace. It contains no voice capture/runtime, sound output, OmniSorSe transport, Context/Hybrid mode, telemetry, upload service, background service, auto-start task, updater or destructive file operation.
+`1.2.0-nebula.8` is a local-only folder workspace. It contains no voice capture/runtime, sound output, OmniSorSe transport, Context/Hybrid mode, telemetry, upload service, background service, auto-start task, updater or destructive file operation.
 
 ## Local access and saved data
 

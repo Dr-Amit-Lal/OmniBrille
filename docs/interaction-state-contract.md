@@ -1,6 +1,6 @@
 # Spatial workspace interaction contract
 
-Current product: `1.2.0-nebula.7`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
+Current product: `1.2.0-nebula.8`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
 
 | Action | Required outcome |
 | --- | --- |
@@ -22,6 +22,9 @@ Current product: `1.2.0-nebula.7`, local-only Spatial Explorer. All navigation, 
 | Leave result / close Search | Clear the local marker; closing Search clears query/results |
 | Double-click result / Enter | Enter a folder or explicitly open a file through the guarded shell activation service |
 | Show in map | Enter the selected folder result, or enter the containing folder and select the file without opening it |
+| Minimize or switch away | Keep the running workspace available from a small tab at the left edge of its display |
+| Click the edge tab | Restore/activate the existing workspace and hide the tab; preserve the previous normal/maximized state |
+| Close window | Exit normally and remove the edge tab |
 | Ctrl+R | Request bounded refresh of current scene and active query |
 | Ctrl+H | Hide/restore controls without changing workspace authority or location |
 

@@ -264,6 +264,72 @@ if ($applicationProcess.MainWindowTitle -ne 'Spatial Explorer') {
   throw "Installed application did not expose the expected window title: '$($applicationProcess.MainWindowTitle)'."
 }
 Wait-ForSavedWorkspace -ApplicationProcessToCheck $applicationProcess -WorkspacePathToCheck $workspacePath -ExpectedRootPath $smokeRoot
+
+# Exercise the installed screen-edge tab using the actual Win32 windows. This
+# checks minimize, edge placement, and pointer activation, not physical DPI or
+# a full interactive feature sweep.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class OmniBrilleDockProbe {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int Size; public RECT Monitor, Work; public uint Flags; }
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+}
+'@
+$mainHandle = $applicationProcess.MainWindowHandle
+if ($mainHandle -eq [IntPtr]::Zero) { throw 'Installed application has no main window handle.' }
+[void][OmniBrilleDockProbe]::ShowWindow($mainHandle, 6) # SW_MINIMIZE
+$deadline = (Get-Date).AddSeconds(15)
+$dockHandle = [IntPtr]::Zero
+do {
+  Start-Sleep -Milliseconds 200
+  $candidate = [OmniBrilleDockProbe]::FindWindow($null, 'Spatial Explorer tab')
+  $candidatePid = [uint32]0
+  if ($candidate -ne [IntPtr]::Zero) {
+    [void][OmniBrilleDockProbe]::GetWindowThreadProcessId($candidate, [ref]$candidatePid)
+    if ($candidatePid -eq $applicationProcess.Id -and [OmniBrilleDockProbe]::IsWindowVisible($candidate)) { $dockHandle = $candidate }
+  }
+} until (($dockHandle -ne [IntPtr]::Zero -and [OmniBrilleDockProbe]::IsIconic($mainHandle)) -or (Get-Date) -gt $deadline)
+if ($dockHandle -eq [IntPtr]::Zero -or -not [OmniBrilleDockProbe]::IsIconic($mainHandle)) {
+  throw 'Minimizing the installed app did not expose the edge tab.'
+}
+$dockRect = [OmniBrilleDockProbe+RECT]::new()
+$clientRect = [OmniBrilleDockProbe+RECT]::new()
+$monitor = [OmniBrilleDockProbe]::MonitorFromWindow($dockHandle, 2)
+$monitorInfo = [OmniBrilleDockProbe+MONITORINFO]::new()
+$monitorInfo.Size = [Runtime.InteropServices.Marshal]::SizeOf($monitorInfo)
+if (-not [OmniBrilleDockProbe]::GetWindowRect($dockHandle, [ref]$dockRect) -or
+    -not [OmniBrilleDockProbe]::GetClientRect($dockHandle, [ref]$clientRect) -or
+    -not [OmniBrilleDockProbe]::GetMonitorInfo($monitor, [ref]$monitorInfo) -or
+    [Math]::Abs($dockRect.Left - $monitorInfo.Work.Left) -gt 2) {
+  throw 'The installed edge tab is not positioned at the monitor work area left edge.'
+}
+$clickX = [int](($clientRect.Right - $clientRect.Left) / 2)
+$clickY = [int](($clientRect.Bottom - $clientRect.Top) / 2)
+$point = [IntPtr]::new(($clickY -shl 16) -bor $clickX)
+if (-not [OmniBrilleDockProbe]::PostMessage($dockHandle, 0x0200, [IntPtr]::Zero, $point) -or
+    -not [OmniBrilleDockProbe]::PostMessage($dockHandle, 0x0201, [IntPtr]::new(1), $point) -or
+    -not [OmniBrilleDockProbe]::PostMessage($dockHandle, 0x0202, [IntPtr]::Zero, $point)) {
+  throw 'Could not click the installed edge tab.'
+}
+$deadline = (Get-Date).AddSeconds(15)
+do { Start-Sleep -Milliseconds 200 } until (
+  (-not [OmniBrilleDockProbe]::IsIconic($mainHandle) -and -not [OmniBrilleDockProbe]::IsWindowVisible($dockHandle)) -or (Get-Date) -gt $deadline
+)
+if ([OmniBrilleDockProbe]::IsIconic($mainHandle) -or [OmniBrilleDockProbe]::IsWindowVisible($dockHandle)) {
+  throw 'Clicking the installed edge tab did not restore the app and hide the tab.'
+}
+$applicationProcess.Refresh()
 if (-not $applicationProcess.CloseMainWindow()) { throw 'Installed application did not accept a normal window-close request.' }
 Wait-Process -Id $applicationProcess.Id -Timeout 10 -ErrorAction Stop
 
@@ -370,6 +436,7 @@ $validationPath = Join-Path $artifactRoot 'OmniBrille-release-validation.json'
     startMenuAndUninstallRegistration = 'passed'
     installedStandaloneWindow = 'passed'
     installedVersionMetadata = 'passed'
+    edgeTabMinimizeAndRestore = 'passed'
     normalCloseAndRelaunch = 'passed'
     signatureWhenRequired = 'passed'
     uninstallCleanup = 'passed'
