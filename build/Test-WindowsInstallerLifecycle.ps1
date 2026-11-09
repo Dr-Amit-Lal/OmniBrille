@@ -313,12 +313,34 @@ if ((Get-FileHash -LiteralPath $preferencesPath -Algorithm SHA256).Hash -ne $pre
     (Get-FileHash -LiteralPath $workspacePath -Algorithm SHA256).Hash -ne $workspaceHash) {
     throw 'Uninstall changed or removed saved workspace/preferences.'
 }
-# Remove only our two sentinel files and their now-empty directories after proving preservation.
+# Remove only our two sentinel files and empty directories in this fresh, owned
+# fixture after proving preservation. Pre-existing fixture directories (including
+# THIRD-PARTY-LICENSES) can legitimately survive the uninstall with no files.
 foreach ($fixturePath in $expectedRemainingFiles) { Remove-Item -LiteralPath $fixturePath }
-foreach ($fixtureDirectory in @((Join-Path $installDirectory 'Voice\Runtime'), (Join-Path $installDirectory 'Voice'), $installDirectory)) {
-    if (@(Get-ChildItem -LiteralPath $fixtureDirectory -Force).Count -ne 0) { throw 'Unexpected content remains in the fixture directory.' }
-    Remove-Item -LiteralPath $fixtureDirectory
+$fixtureDirectories = [Collections.Generic.List[IO.DirectoryInfo]]::new()
+$pendingDirectories = [Collections.Generic.Stack[string]]::new()
+$pendingDirectories.Push($installDirectory)
+while ($pendingDirectories.Count -gt 0) {
+    $currentDirectory = Get-Item -LiteralPath ($pendingDirectories.Pop()) -Force
+    if (($currentDirectory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Unexpected reparse directory remains in the owned fixture.'
+    }
+    foreach ($childDirectory in @(Get-ChildItem -LiteralPath $currentDirectory.FullName -Directory -Force)) {
+        if (($childDirectory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            -not $childDirectory.FullName.StartsWith($installDirectory + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Unexpected directory authority remains in the owned fixture.'
+        }
+        $fixtureDirectories.Add($childDirectory)
+        $pendingDirectories.Push($childDirectory.FullName)
+    }
 }
+foreach ($fixtureDirectory in @($fixtureDirectories | Sort-Object { $_.FullName.Length } -Descending)) {
+    if (@(Get-ChildItem -LiteralPath $fixtureDirectory.FullName -Force).Count -eq 0) {
+        [IO.Directory]::Delete($fixtureDirectory.FullName, $false)
+    }
+}
+if (@(Get-ChildItem -LiteralPath $installDirectory -Force).Count -ne 0) { throw 'Unexpected content remains in the fixture directory.' }
+[IO.Directory]::Delete($installDirectory, $false)
 if (Test-Path -LiteralPath $shortcut) { throw 'Start Menu shortcut remains after uninstall.' }
 if (Test-Path -LiteralPath $spatialShortcut) { throw 'Spatial Explorer shortcut remains after uninstall.' }
 $remainingRegistration = @(Get-ChildItem -LiteralPath $uninstallRoot | ForEach-Object {

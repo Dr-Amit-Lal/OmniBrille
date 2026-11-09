@@ -26,6 +26,8 @@ The source, dependencies, runtime assets and tests for the retired UI/session, v
 
 The CI workflow runs full formatting, Windows/Ubuntu builds, the software-rendered test suite, dependency audit and Windows packaging. Its new native lifecycle gate verifies exact installer/manifest hashes, notices and signatures; install/launch/normal close/relaunch; actual saved-root readiness; removal of known retired assets; and preservation of settings and unknown fixture files through uninstall. The artifact's release-validation JSON and [PR checks](https://github.com/Dr-Amit-Lal/OmniBrille/pull/1/checks) record hosted results separately from this source checkpoint.
 
+The first hosted run passed Ubuntu validation and Windows formatting/build, 195 ordinary cases (five Unix link fixtures skipped), all 36 rendered cases, dependency audit and packaging. Native install, close/relaunch, saved roots, retired-file cleanup, unknown-file preservation and uninstall file checks also passed before the test harness rejected a remaining empty pre-existing fixture directory. The harness now removes only empty non-reparse fixture directories deepest-first after its strict remaining-file checks; installer behavior is unchanged. Delivery still requires the complete rerun to pass.
+
 **Not verified locally:** native Windows installer execution, actual OneDrive synchronization/hydration, physical DPI/GPU behavior, screen-reader software and a real prior-version in-place upgrade. Synthetic retired-asset fixtures do not prove that last case. The local full formatter cannot create its MSBuild named pipe; CI runs that check. Software captures use sample folders, not the owner's filesystem.
 
 ## Problems found and lessons
