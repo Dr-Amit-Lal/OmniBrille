@@ -37,6 +37,9 @@ public sealed record SceneDiagnostics(
 {
     public int ConnectionSegments { get; init; }
     public int HoverHighlights { get; init; }
+    public int SearchIndicators { get; init; }
+    public int EmphasizedSearchIndicators { get; init; }
+    public double SearchIndicatorPhase { get; init; }
     public double MaximumHoverScale { get; init; }
     public int MatchBadges { get; init; }
     public int OverlappingLabelPairs { get; init; }
@@ -81,9 +84,13 @@ public sealed class GraphSceneControl : Control
     private readonly HashSet<string> _clusterRoots = new(ExplorerIdentity.Comparer);
     private IReadOnlyDictionary<string, int> _matchCounts = new Dictionary<string, int>(ExplorerIdentity.Comparer);
     private string? _previewNodeId;
+    private readonly HashSet<string> _previewPathTargets = new(ExplorerIdentity.Comparer);
     private int _matchBadges;
     private int _connectionSegments;
     private int _hoverHighlights;
+    private int _searchIndicators;
+    private int _emphasizedSearchIndicators;
+    private double _searchIndicatorPhase;
     private readonly List<LabelBox> _edgeExclusions = new(128);
     private readonly List<(double Start, double End)> _edgeOcclusions = new(128);
     private readonly DispatcherTimer _animationTimer;
@@ -266,6 +273,9 @@ public sealed class GraphSceneControl : Control
     {
         ConnectionSegments = _connectionSegments,
         HoverHighlights = _hoverHighlights,
+        SearchIndicators = _searchIndicators,
+        EmphasizedSearchIndicators = _emphasizedSearchIndicators,
+        SearchIndicatorPhase = _searchIndicatorPhase,
         MaximumHoverScale = _maximumHoverScale,
         MatchBadges = _matchBadges,
         OverlappingLabelPairs = CountOverlappingLabels(),
@@ -298,6 +308,7 @@ public sealed class GraphSceneControl : Control
         _clusterRootIds = [];
         _matchCounts = new Dictionary<string, int>(ExplorerIdentity.Comparer);
         _previewNodeId = null;
+        _previewPathTargets.Clear();
         SetSceneCore(neighborhood, selectedNodeId, highlights, animate, null);
     }
 
@@ -318,6 +329,15 @@ public sealed class GraphSceneControl : Control
         foreach (var id in _clusterRootIds) { _clusterRoots.Add(id); }
         _matchCounts = matchCounts ?? new Dictionary<string, int>(ExplorerIdentity.Comparer);
         _previewNodeId = previewNodeId;
+        _previewPathTargets.Clear();
+        var pathNode = previewNodeId;
+        while (scene is not null && pathNode is not null && !_clusterRoots.Contains(pathNode) && _previewPathTargets.Add(pathNode))
+        {
+            var parent = scene.Edges.FirstOrDefault(edge => edge.Kind == ExplorerGraphEdgeKind.Structural &&
+                ExplorerIdentity.Equals(edge.TargetId, pathNode));
+            if (parent is null) { _previewPathTargets.Remove(pathNode); break; }
+            pathNode = parent.SourceId;
+        }
         SearchActive = _matchCounts.Count > 0 || previewNodeId is not null;
         var highlights = new HashSet<string>(ExplorerIdentity.Comparer);
         if (previewNodeId is not null) { highlights.Add(previewNodeId); }
@@ -432,6 +452,9 @@ public sealed class GraphSceneControl : Control
         _matchBadges = 0;
         _connectionSegments = 0;
         _hoverHighlights = 0;
+        _searchIndicators = 0;
+        _emphasizedSearchIndicators = 0;
+        _searchIndicatorPhase = ShouldAnimateMotion ? (_motionClock.Elapsed.TotalSeconds / 2.8) % 1 : 0.25;
         base.Render(context);
         var palette = ActualThemeVariant == ThemeVariant.Light ? ScenePalette.Light : ScenePalette.Dark;
         EnsureCacheContext(palette);
@@ -849,8 +872,7 @@ public sealed class GraphSceneControl : Control
             var end = PeripheralPoint(target, targetCenter, sourceCenter);
             var direction = new Vector(end.X - start.X, end.Y - start.Y);
             if (Vector.Dot(direction, targetCenter - sourceCenter) <= 0) { continue; }
-            // Hover and selection never change a connection. Clip straight
-            // segments around every glyph and label, without introducing bends.
+            // Clip straight segments around every glyph and label, without bends.
             _edgeOcclusions.Clear();
             foreach (var box in _edgeExclusions)
             {
@@ -874,6 +896,26 @@ public sealed class GraphSceneControl : Control
                 if ((to - from) * direction.Length < 0.5) { return; }
                 context.DrawLine(pen, start + direction * from, start + direction * to);
                 _connectionSegments++;
+                if (!SearchActive || _matchCounts.GetValueOrDefault(edge.TargetId) <= 0) { return; }
+
+                // Small moving points sit on existing visible segments rather than
+                // drawing another route. A larger margin keeps their glow away from
+                // glyphs, rings and labels even while the layout is moving.
+                const double margin = 7;
+                var segmentLength = (to - from) * direction.Length;
+                if (segmentLength <= 2 * margin) { return; }
+                var emphasized = _previewPathTargets.Contains(edge.TargetId);
+                var color = ReferenceEquals(palette, ScenePalette.Dark) ? PreviewGold : palette.Search;
+                for (var index = 0; index < 2; index++)
+                {
+                    var phase = (_searchIndicatorPhase + index * 0.5) % 1;
+                    var position = from + (margin + phase * (segmentLength - (2 * margin))) / direction.Length;
+                    var center = start + direction * position;
+                    if (!ReducedEffects) { context.DrawEllipse(Brush(color, emphasized ? (byte)70 : (byte)35), null, center, emphasized ? 5 : 3.4, emphasized ? 5 : 3.4); }
+                    context.DrawEllipse(Brush(color, emphasized ? (byte)255 : (byte)155), null, center, emphasized ? 2.5 : 1.6, emphasized ? 2.5 : 1.6);
+                    _searchIndicators++;
+                    if (emphasized) { _emphasizedSearchIndicators++; }
+                }
             }
         }
     }

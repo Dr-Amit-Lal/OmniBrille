@@ -11,6 +11,8 @@ Retain a report only for architecture/product boundary changes, serious regressi
 
 ## Reports
 
+- [2026-11-09 Search indicators and direct file opening](2026-11-09-search-indicators-file-opening.md): moving points on existing search connections, explicit file-result opening and retained location navigation.
+
 - [2026-11-09 Restored spatial effects](2026-11-09-restored-spatial-effects.md): original gentle motion, smooth hover response and glow restored within the compact layout; exact-build qualification pending at documentation handoff.
 
 - [2026-11-08 Calm spatial map](2026-11-08-calm-spatial-map.md): stationary local hover, smaller icons/text, muted straight connections and direct root navigation.

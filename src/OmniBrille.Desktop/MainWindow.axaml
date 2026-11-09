@@ -100,8 +100,11 @@
             <Button x:Name="SearchButton" Grid.Column="1" Classes="hud icon" Content="↵" Click="OnSearchClick" AutomationProperties.Name="Run workspace search" />
           </Grid>
           <TextBlock x:Name="SearchSummaryText" Grid.Row="1" Text="All workspace folders" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
-          <ListBox x:Name="SearchResultsList" Grid.Row="2" Focusable="True" Background="Transparent" BorderThickness="0" SelectionChanged="OnSearchSelectionChanged" DoubleTapped="OnSearchDoubleTapped" AutomationProperties.Name="Workspace search results" />
-          <Button x:Name="CloseSearchButton" Grid.Row="3" Classes="hud" Content="← Close search" Click="OnPinnedTabClick" HorizontalAlignment="Stretch" AutomationProperties.Name="Close search and show pins" />
+          <ListBox x:Name="SearchResultsList" Grid.Row="2" Focusable="True" Background="Transparent" BorderThickness="0" SelectionChanged="OnSearchSelectionChanged" AutomationProperties.Name="Workspace search results" />
+          <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="6">
+            <Button x:Name="ShowResultButton" Classes="hud" Content="Show in map" Click="OnShowResultClick" IsEnabled="False" HorizontalAlignment="Stretch" AutomationProperties.Name="Show selected search result in map" />
+            <Button x:Name="CloseSearchButton" Grid.Column="1" Classes="hud" Content="Close" Click="OnPinnedTabClick" HorizontalAlignment="Stretch" AutomationProperties.Name="Close search and show pins" />
+          </Grid>
         </Grid>
       </Grid>
     </Border>

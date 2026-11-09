@@ -10,7 +10,7 @@ The owner chose a focused local folder workspace with several saved roots, indep
 
 Use one `MainWindow` and `SpatialWorkspaceSession`. Save up to 8 explicitly chosen roots, 12 pins and the current authorized location in `spatial-workspace.json`. Migrate only older explicit root/pin records when the new file is absent; do not infer recommended roots. Retain legacy stores/models only for that migration.
 
-Show roots as separate bounded clusters. Back/Up follows containing folders toward Workspace. Pins inside roots use the deepest containing root; outside pins create a temporary exact-folder scope without changing monitored roots. Search spans chosen roots only. Hover/keyboard result preview is temporary and reversible; activating a file result reveals its containing folder and selects it before explicit file opening.
+Show roots as separate bounded clusters. Back/Up follows containing folders toward Workspace. Pins inside roots use the deepest containing root; outside pins create a temporary exact-folder scope without changing monitored roots. Search spans chosen roots only. Hover/keyboard result preview is temporary and reversible. File-result activation opens the file; Show in map reveals its containing folder without opening it.
 
 Monitor chosen roots while the app is open and use coalesced/periodic bounded refresh. Do not maintain a content index, background service or cloud account connection. Keep theme and reduced motion/effects; interface visibility is transient.
 
@@ -35,3 +35,7 @@ Nebula.5 changed Search preview to mark only an existing visible node or nearest
 ## Nebula.6 effect restoration
 
 The owner clarified that the layout cleanup should preserve the original motion and hover effects. Restore `GraphMotionPolicy` gentle floating, a smooth hover lens bounded to 1.16× with local neighbor response, and original folder glow/shine and hover/selection rings. Navigation transitions apply only when the displayed scene changes. Keep the compact base layout and glyphs, thin neutral straight connections, nearest-visible-ancestor Search markers and direct root navigation. Reserve local ring space for labels and connector clipping; do not restore extra hover routes, particles, preview branches or the synthetic Open folder node. Reduced motion disables nonessential movement. This correction changes presentation only; session, persistence and authority contracts remain unchanged.
+
+## Nebula.7 search indicators and file activation
+
+The owner clarified that search indicators should follow the existing connections. Moving points now travel only on visible matching edge segments, and a hovered or selected result emphasizes its visible ancestor path. Their glow clears glyph and label exclusions; reduced motion leaves them stationary. No branches or extra connecting lines are added. Double-click or Enter on a file result opens it through the same guarded activation service as a graph file; a separate Show in map action retains location navigation. This supersedes the nebula.6 decision to remove particles while preserving its clean connections.

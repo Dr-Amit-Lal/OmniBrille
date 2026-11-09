@@ -1,6 +1,6 @@
 # Spatial workspace glossary
 
-Current meanings for `1.2.0-nebula.6`; [architecture](architecture.md) owns behavior.
+Current meanings for `1.2.0-nebula.7`; [architecture](architecture.md) owns behavior.
 
 | Term | Meaning |
 | --- | --- |
@@ -11,6 +11,7 @@ Current meanings for `1.2.0-nebula.6`; [architecture](architecture.md) owns beha
 | Current root/path | Authorized browsing scope and displayed containing folder, saved in workspace JSON |
 | Selected node | Visible node chosen for an action; selection alone does not launch files |
 | Preview | Temporary local emphasis on a validated result or its nearest visible ancestor; scene membership and current location stay unchanged |
+| Search indicator | A small point on an existing visible connection toward matching results; emphasized along the previewed result's ancestor path |
 | Hover lens | Smooth temporary enlargement up to 16% with subtle local neighbor response; does not change the base layout, scene membership or saved state |
 | Back / Up | One containing-folder step toward the workspace; no chronological-history semantics |
 | Aggregate | Bounded previous/next-page control, not a semantic grouping inferred from document contents |

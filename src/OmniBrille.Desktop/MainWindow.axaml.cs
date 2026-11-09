@@ -172,6 +172,7 @@ public sealed partial class MainWindow : Window, IDisposable
             UpdatePinRows();
             UpdateRootRows();
             UpdateSearchRows();
+            ShowResultButton.IsEnabled = SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit };
             SearchSummaryText.Text = _session.IsSearching ? "Searching your workspace…"
                 : _session.SearchQuery.Length == 0 ? "All workspace folders"
                 : $"{_session.SearchResults.Count} matches · All workspace folders";
@@ -228,6 +229,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 AutomationProperties.SetName(row, hit.Name + ", " + DisplayLocation(hit.RootPath, hit.Path));
                 ToolTip.SetTip(row, hit.Path);
                 row.PointerEntered += async (_, _) => await _session.PreviewSearchHitAsync(hit);
+                row.DoubleTapped += async (_, e) => { e.Handled = true; GraphScene.Focus(); await _session.ActivateSearchHitAsync(hit); };
                 row.PointerExited += async (_, _) => await _session.PreviewSearchHitAsync(null);
                 rows.Add(row);
             }
@@ -319,9 +321,14 @@ public sealed partial class MainWindow : Window, IDisposable
     }
     private async void OnSearchSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (!_ready) { return; }
+        ShowResultButton.IsEnabled = SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit };
         if (!_syncing && SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit hit }) { await _session.PreviewSearchHitAsync(hit); }
     }
-    private async void OnSearchDoubleTapped(object? sender, TappedEventArgs e) => await ActivateSelectedSearchAsync();
+    private async void OnShowResultClick(object? sender, RoutedEventArgs e)
+    {
+        if (SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit hit }) { await _session.ShowSearchHitInMapAsync(hit); }
+    }
     private async void OnSearchResultsKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { e.Handled = true; await ActivateSelectedSearchAsync(); }

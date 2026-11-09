@@ -122,6 +122,58 @@ public sealed class WorkspaceRendererTests
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task SearchIndicatorsFollowMatchingConnectionsAndEmphasizeOnlyThePreviewPath(bool light)
+    {
+        var scene = CreateScene();
+        var counts = new Dictionary<string, int> { ["documents"] = 2, ["teaching"] = 1, ["letters"] = 1, ["research"] = 1, ["papers"] = 1 };
+        var graph = new GraphSceneControl { ScenePadding = new Thickness(40) };
+        var window = new Window { Content = graph, Width = 1280, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.Show();
+        try
+        {
+            graph.SetWorkspaceScene(scene, Roots, null, counts, null, animate: false);
+            using (window.CaptureRenderedFrame()) { }
+            var baseSegments = graph.Diagnostics.ConnectionSegments;
+            var baseCount = graph.Diagnostics.SearchIndicators;
+            var phase = graph.Diagnostics.SearchIndicatorPhase;
+            Assert.True(baseCount > 0);
+            Assert.Equal(0, graph.Diagnostics.EmphasizedSearchIndicators);
+            await Task.Delay(120);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.NotEqual(phase, graph.Diagnostics.SearchIndicatorPhase);
+            graph.SetWorkspaceScene(scene, Roots, null, counts, "letters", animate: false);
+            using (var frame = window.CaptureRenderedFrame())
+            {
+                var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
+                if (!string.IsNullOrEmpty(output))
+                {
+                    Directory.CreateDirectory(output);
+                    Assert.NotNull(frame);
+                    frame.Save(Path.Combine(output, light ? "search-indicators-light.png" : "search-indicators-dark.png"),
+                        Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                }
+            }
+            Assert.Equal(scene.Nodes.Count, graph.Diagnostics.Nodes);
+            Assert.Equal(scene.Edges.Count, graph.Diagnostics.Edges);
+            Assert.Equal(baseSegments, graph.Diagnostics.ConnectionSegments);
+            Assert.True(graph.Diagnostics.EmphasizedSearchIndicators > 0);
+            Assert.True(graph.Diagnostics.EmphasizedSearchIndicators < graph.Diagnostics.SearchIndicators);
+            graph.ReducedMotion = true;
+            using (window.CaptureRenderedFrame()) { }
+            var stationaryPhase = graph.Diagnostics.SearchIndicatorPhase;
+            await Task.Delay(80);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.Equal(stationaryPhase, graph.Diagnostics.SearchIndicatorPhase);
+            graph.SetWorkspaceScene(scene, Roots, null, null, null, animate: false);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.Equal(0, graph.Diagnostics.SearchIndicators);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task FullMotionRestoresHoverMagnificationWithoutAddingBranchesAndStopsWhenDisabled(bool light)
     {
         var scene = CreateScene();

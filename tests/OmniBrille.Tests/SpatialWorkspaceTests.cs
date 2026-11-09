@@ -142,7 +142,8 @@ public sealed class SpatialWorkspaceTests
         var target = Path.Combine(b, "Nested", "Deeper", "needle-b.txt");
         File.WriteAllText(target, "b");
         var store = new MemoryStore(new SpatialWorkspace([new(a, "A"), new(b, "B")], []));
-        using var session = new SpatialWorkspaceSession(store);
+        var activation = new RecordingFileActivation();
+        using var session = new SpatialWorkspaceSession(store, activation: activation);
         await session.InitializeAsync();
         await session.SearchAsync("needle");
         Assert.Equal(2, session.SearchResults.Count);
@@ -172,8 +173,16 @@ public sealed class SpatialWorkspaceTests
         Assert.Same(before, session.Scene);
         Assert.Null(session.PreviewNodeId);
         await session.ActivateSearchHitAsync(hit);
-        Assert.Equal(Path.GetDirectoryName(target), session.CurrentPath);
-        Assert.Equal(target, session.NodeById(session.SelectedNodeId)!.Path);
+        Assert.True(session.IsOverview);
+        Assert.Equal(1, activation.Calls);
+        Assert.Equal(b, activation.Root);
+        Assert.Equal(target, activation.Path);
+        File.Delete(target);
+        await session.ActivateSearchHitAsync(hit);
+        Assert.Equal(1, activation.Calls);
+        session.RemoveRoot(b);
+        await session.ActivateSearchHitAsync(hit);
+        Assert.Equal(1, activation.Calls);
     }
 
     [Fact]
@@ -490,6 +499,20 @@ public sealed class SpatialWorkspaceTests
         Assert.Equal(root, Assert.Single(session.State.Roots).Path);
         Assert.Equal(pin, Assert.Single(session.State.Pins).Path);
         Assert.Equal(child, store.Load().CurrentPath);
+    }
+
+    private sealed class RecordingFileActivation : IFileActivationService
+    {
+        public int Calls { get; private set; }
+        public string? Root { get; private set; }
+        public string? Path { get; private set; }
+        public Task<FileActivationResult> OpenAsync(string accessRoot, string path, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Root = accessRoot;
+            Path = path;
+            return Task.FromResult(FileActivationResult.Opened);
+        }
     }
 
     private sealed class MemoryStore(SpatialWorkspace initial) : ISpatialWorkspaceStore

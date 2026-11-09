@@ -1,6 +1,6 @@
 # Security and privacy posture
 
-`1.2.0-nebula.6` is a local-only folder workspace. It contains no voice capture/runtime, sound output, OmniSorSe transport, Context/Hybrid mode, telemetry, upload service, background service, auto-start task, updater or destructive file operation.
+`1.2.0-nebula.7` is a local-only folder workspace. It contains no voice capture/runtime, sound output, OmniSorSe transport, Context/Hybrid mode, telemetry, upload service, background service, auto-start task, updater or destructive file operation.
 
 ## Local access and saved data
 
@@ -18,7 +18,7 @@ Paths are normalized and checked against their authorized root. Symbolic links, 
 
 ## Explicit file opening
 
-Selecting or previewing a file does not launch it. Open file, deliberate graph file activation or keyboard invocation passes a revalidated ordinary-file path to the operating system. Search-result activation first opens the containing folder and selects the file.
+Selecting or previewing a file does not launch it. Open file, double-click or Enter on a file passes a revalidated ordinary-file path to the operating system. Search results are checked against the current results and chosen roots before launch. **Show in map** navigates to a selected result without opening the file.
 
 `ShellFileActivationService` rejects out-of-root/unsafe paths and blocked executable, script, installer, shortcut and URL-like file types. It constructs no shell command from query text. Opening a permitted document invokes its associated application; subsequent application behavior is outside this explorer's control.
 

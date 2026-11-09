@@ -373,7 +373,14 @@ public sealed class SpatialWorkspaceSession : IDisposable
 
     public async Task ActivateSearchHitAsync(FileMapSearchHit hit)
     {
-        if (_disposed || !IsSearchHitAuthorized(hit)) { return; }
+        if (_disposed || !SearchResults.Contains(hit) || !IsSearchHitAuthorized(hit)) { return; }
+        if (hit.Kind == ExplorerNodeKind.Folder) { await NavigatePathAsync(hit.RootPath, hit.Path); }
+        else { await OpenFileAsync(hit.RootPath, hit.Path, () => SearchResults.Contains(hit) && IsSearchHitAuthorized(hit)); }
+    }
+
+    public async Task ShowSearchHitInMapAsync(FileMapSearchHit hit)
+    {
+        if (_disposed || !SearchResults.Contains(hit) || !IsSearchHitAuthorized(hit)) { return; }
         if (hit.Kind == ExplorerNodeKind.Folder) { await NavigatePathAsync(hit.RootPath, hit.Path); }
         else
         {
@@ -455,16 +462,21 @@ public sealed class SpatialWorkspaceSession : IDisposable
     {
         if (_disposed || SelectedNodeId is not { } id || NodeById(id) is not { } node || !_baseScene.Locations.TryGetValue(id, out var location)) { return; }
         if (node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Aggregate) { await NavigateAsync(id); return; }
+        if (node.Kind == ExplorerNodeKind.File) { await OpenFileAsync(location.Root, location.Path, () => IsAuthorizedRoot(location.Root)); }
+    }
+
+    private async Task OpenFileAsync(string root, string path, Func<bool> authorized)
+    {
         var version = _workspaceVersion;
-        if (node.Kind != ExplorerNodeKind.File || !IsAuthorizedRoot(location.Root) || !await Task.Run(() => FileMapPathGuard.IsOrdinaryPath(location.Root, location.Path, requireDirectory: false)))
+        if (!authorized() || !await Task.Run(() => FileMapPathGuard.IsOrdinaryPath(root, path, requireDirectory: false)))
         {
-            SetStatus("This file is no longer available inside its root.");
+            if (!_disposed && version == _workspaceVersion && authorized()) { SetStatus("This file is no longer available inside its root."); }
             return;
         }
-        if (_disposed || version != _workspaceVersion || !IsAuthorizedRoot(location.Root)) { return; }
+        if (_disposed || version != _workspaceVersion || !authorized()) { return; }
         try
         {
-            var result = await _activation.OpenAsync(location.Root, location.Path);
+            var result = await _activation.OpenAsync(root, path);
             if (!_disposed && version == _workspaceVersion) { SetStatus(result == FileActivationResult.Opened ? "Opened file." : $"Could not open file: {result}."); }
         }
         catch (Exception exception) when (IsRecoverable(exception)) { if (!_disposed && version == _workspaceVersion) { SetStatus("The file could not be opened."); } }

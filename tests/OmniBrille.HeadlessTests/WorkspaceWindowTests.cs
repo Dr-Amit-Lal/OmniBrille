@@ -213,7 +213,7 @@ public sealed class WorkspaceWindowTests
     }
 
     [AvaloniaFact]
-    public async Task FileSearchResult_SelectsItsContainingFolderAndOpensOnlyOnExplicitAction()
+    public async Task FileSearchResult_EnterOpensDirectlyWithoutOpeningOnSelection()
     {
         using var fixture = new WorkspaceFixture();
         fixture.Save();
@@ -228,16 +228,66 @@ public sealed class WorkspaceWindowTests
         window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
         Assert.Equal(0, list.SelectedIndex);
         Assert.True(Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0)).IsKeyboardFocusWithin);
-        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
-        await WaitUntilAsync(() => window.Session.CurrentPath == fixture.Documents && window.Session.SelectedNodeId is not null && !window.Session.IsBusy);
-        Assert.Equal(hit.Path, window.Session.NodeById(window.Session.SelectedNodeId)!.Path);
         Assert.Equal(0, activation.Calls);
-        Click(window.FindControl<Button>("CloseSearchButton")!);
-        Assert.True(window.FindControl<Border>("FileDetailsPanel")!.IsEffectivelyVisible);
-        Click(window.FindControl<Button>("OpenFileButton")!);
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
         await WaitUntilAsync(() => activation.Calls == 1);
         Assert.Equal(fixture.Documents, activation.Root);
         Assert.Equal(hit.Path, activation.Path);
+        Assert.True(window.Session.IsOverview);
+        Click(window.FindControl<Button>("ShowResultButton")!);
+        await WaitUntilAsync(() => window.Session.CurrentPath == fixture.Documents && window.Session.SelectedNodeId is not null && !window.Session.IsBusy);
+        Assert.Equal(hit.Path, window.Session.NodeById(window.Session.SelectedNodeId)!.Path);
+        Assert.Equal(1, activation.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task DoubleClickingAFileSearchResultOpensThatFile()
+    {
+        using var fixture = new WorkspaceFixture();
+        fixture.Save();
+        var activation = new RecordingFileActivation();
+        using var window = fixture.CreateWindow(activation);
+        await ShowAsync(window);
+        await SearchAsync(window, "Document 01");
+        var hit = Assert.Single(window.Session.SearchResults);
+        var list = window.FindControl<ListBox>("SearchResultsList")!;
+        using (window.CaptureRenderedFrame()) { }
+        var row = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
+        var point = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(point);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Assert.Equal(0, activation.Calls);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        await WaitUntilAsync(() => activation.Calls == 1);
+        Assert.Equal(hit.Path, activation.Path);
+        Assert.True(window.Session.IsOverview);
+    }
+
+    [AvaloniaFact]
+    public async Task DoubleClickingAFileOnTheMapOpensThatFile()
+    {
+        using var fixture = new WorkspaceFixture();
+        fixture.Save();
+        var activation = new RecordingFileActivation();
+        using var window = fixture.CreateWindow(activation);
+        await ShowAsync(window);
+        await window.Session.OpenRootAsync(fixture.Documents);
+        using (window.CaptureRenderedFrame()) { }
+        var graph = window.FindControl<GraphSceneControl>("GraphScene")!;
+        var peer = ControlAutomationPeer.CreatePeerForElement(graph);
+        var file = Assert.Single(peer.GetChildren(), item => item.GetName().StartsWith("Document 01.md, ", StringComparison.Ordinal));
+        var center = file.GetBoundingRectangle().Center;
+        var point = window.PointToClient(new PixelPoint((int)center.X, (int)center.Y));
+        window.MouseMove(point);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Assert.Equal(0, activation.Calls);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        await WaitUntilAsync(() => activation.Calls == 1);
+        Assert.Equal(Path.Combine(fixture.Documents, "Document 01.md"), activation.Path);
     }
 
     [AvaloniaFact]

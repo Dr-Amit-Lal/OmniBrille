@@ -1,18 +1,18 @@
 # Windows packaging
 
-Current source version: **`1.2.0-nebula.6`**. One per-user Windows x64 installer opens the local Spatial Explorer. Upstream v1.2.0 artifacts and earlier hosted results do not qualify these bytes.
+Current source version: **`1.2.0-nebula.7`**. One per-user Windows x64 installer opens the local Spatial Explorer. Upstream v1.2.0 artifacts and earlier hosted results do not qualify these bytes.
 
 ## Package and installer identity
 
 The pinned Inno Setup 6.7.3 build installs at `%LOCALAPPDATA%\Programs\OmniBrille`, keeps the stable application ID, and creates one **OmniBrille Spatial Explorer** Start Menu shortcut and one uninstall registration. It requests no administrator rights. The application is self-contained, non-trimmed and multi-file; no separate .NET runtime is required.
 
-`Directory.Build.props` is authoritative: semantic/informational version `1.2.0-nebula.6`, assembly/file version `1.2.0.0`. The installer fallback matches it. Launch accepts `--root` and `--theme`; no handoff/runtime audio capability is packaged.
+`Directory.Build.props` is authoritative: semantic/informational version `1.2.0-nebula.7`, assembly/file version `1.2.0.0`. The installer fallback matches it. Launch accepts `--root` and `--theme`; no handoff/runtime audio capability is packaged.
 
 ```powershell
 .\build\Package-Windows.ps1 -BootstrapInnoSetup
 ```
 
-The output set uses the stem `OmniBrille-1.2.0-nebula.6-win-x64-setup`: `.exe`, `.exe.sha256`, `-manifest.json`, `-dependencies.json`, and `-release-notes.md`. Keep all files from the same build together. The generated notes bind the exact installer and incorporate [current release guidance](release-notes.md).
+The output set uses the stem `OmniBrille-1.2.0-nebula.7-win-x64-setup`: `.exe`, `.exe.sha256`, `-manifest.json`, `-dependencies.json`, and `-release-notes.md`. Keep all files from the same build together. The generated notes bind the exact installer and incorporate [current release guidance](release-notes.md).
 
 ## Contents and provenance
 
@@ -36,4 +36,4 @@ Custom preview packages are **unsigned** unless the explicitly configured signin
 
 `build/verify-release.ps1` is the clean-checkout release gate: documentation, formatting/build/tests, dependency audit, packaging, notices, prohibited payloads, hashes, signing state and native-asset integrity. The artifact-only hosted lifecycle verifies the exact candidate, per-user install, shortcuts/registration/version, normal launch/close/relaunch and uninstall. Record outcomes instead of treating configured checks as passed results.
 
-No nebula.6 native Windows lifecycle, visual/DPI/GPU, screen-reader or OneDrive hydration result is implied by this document. [Release checklist](../RELEASE_CHECKLIST.md) and [testing](testing.md) track the remaining evidence.
+No nebula.7 native Windows lifecycle, visual/DPI/GPU, screen-reader or OneDrive hydration result is implied by this document. [Release checklist](../RELEASE_CHECKLIST.md) and [testing](testing.md) track the remaining evidence.

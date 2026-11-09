@@ -1,6 +1,6 @@
 # Engineering start here
 
-Use current source and observable behavior before tests, Git history, build configuration, current prose, historical reports and inference. `1.2.0-nebula.6` is one local spatial workspace. Retired voice/protocol/Context/My Files guides are historical, not implementation instructions.
+Use current source and observable behavior before tests, Git history, build configuration, current prose, historical reports and inference. `1.2.0-nebula.7` is one local spatial workspace. Retired voice/protocol/Context/My Files guides are historical, not implementation instructions.
 
 ## Authority map
 

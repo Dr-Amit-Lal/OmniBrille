@@ -1,6 +1,6 @@
 # Spatial workspace release evidence checklist
 
-Current target: `1.2.0-nebula.6`. Unchecked items are requirements to record, not claims of completed tests. Historical release/run reports retain their original scope.
+Current target: `1.2.0-nebula.7`. Unchecked items are requirements to record, not claims of completed tests. Historical release/run reports retain their original scope.
 
 - [ ] Record exact source commit, clean checkout, version metadata and release artifact identity.
 - [ ] Run documentation links/fences, formatting, analyzer-enabled Release build, ordinary/headless tests and dependency audit.
