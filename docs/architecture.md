@@ -1,6 +1,6 @@
 # Spatial workspace architecture
 
-Current contract: **`1.2.0-nebula.5`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
+Current contract: **`1.2.0-nebula.6`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
 
 ## Components
 
@@ -60,7 +60,9 @@ Cancellation and navigation, search, preview and workspace generations reject la
 
 The workspace scene has at most 64 nodes. Overview acquisition admits each root, up to six immediate children; responsive presentation reduces visible children for narrow or many-root layouts. A focused folder projects its cached bounded directory snapshot into pages of 4–60 children, with previous/next controls inside the same bound. The shell normally shows 24 children, reducing to 4–8 on short/compact canvases and reducing further for larger text. Resizing reprojects the cached snapshot without new filesystem work. Enumeration is capped at 5,000 entries; truncation is visible. The parent folder glyph opens its contents directly; the synthetic Open folder node is removed. Search markers never expand the scene.
 
-The renderer uses compact outlined folder/document glyphs, real containment edges, deterministic cluster placement and bounded caches. Thin straight connections have constant color and width across hover/selection and are clipped around all glyph and label bounds. Local hover uses a soft glow and label background; the former moving/enlarging lens, floating positions, preview route glow and dust are removed. Reduced motion stops the local pulse. No animation ticker runs when the scene is idle. Shared static glyph geometry avoids rebuilding the same paths. Text, hit targets, label obstacles and connector endpoints use the same scene geometry. Nebula/Light and Reduced motion/effects share the same navigation state. Automation is a bounded projection of visible graph nodes, not an independent filesystem browser.
+The renderer retains compact outlined folder/document glyphs, real containment edges, deterministic cluster placement and bounded caches. `GraphMotionPolicy` restores analytic gentle floating around the base layout and a smooth hover lens bounded to 1.16×, with subtle local neighbor response; root glyphs have no ambient drift. Original folder glow/shine and a local hover/selection ring provide feedback without adding routes or expanding the scene. Navigation transitions run only when the displayed scene changes.
+
+Thin straight connections keep constant color and width across hover/selection. Their endpoints follow the displayed glyph geometry, and clipping clears glyphs, labels and the reserved local ring envelope. Labels reserve ring space even at rest. Preview route glows and dust remain removed. Full-motion rendering ticks while the graph is active in the foreground; Reduced motion disables floating, hover enlargement and navigation transitions, while Reduced effects lowers glow. Shared static glyph geometry avoids rebuilding the same paths. Text, hit targets, label obstacles and connectors use the same displayed geometry. Nebula/Light and Reduced motion/effects share the same navigation state. Automation is a bounded projection of visible graph nodes, not an independent filesystem browser.
 
 ## Refresh and lifecycle
 

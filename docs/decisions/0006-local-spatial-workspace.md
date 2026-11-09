@@ -28,6 +28,10 @@ The manifest moves to schema 6 with local-workspace identity. Native Windows upg
 - [Workspace model](../../src/OmniBrille.Core/SpatialWorkspace.cs) and [store](../../src/OmniBrille.Infrastructure/JsonSpatialWorkspaceStore.cs)
 - [Current architecture](../architecture.md), [interaction contract](../interaction-state-contract.md), [packaging](../PACKAGING.md)
 
-## Nebula.5 visual refinement
+## Nebula.5 visual refinement (effects superseded below)
 
-Search preview now marks only an existing visible node or nearest ancestor within the same root. It never expands topology. The renderer removes hover enlargement, floating positions, route glows and particles. Thin straight edges are clipped around glyphs and labels; only the local icon glow and label background respond to hover. Overview roots open directly without a synthetic Open folder node. State schema, path authorization and explicit file activation are unchanged.
+Nebula.5 changed Search preview to mark only an existing visible node or nearest ancestor within the same root, without expanding topology. It removed hover enlargement, floating positions, route glows and particles. Thin straight edges were clipped around glyphs and labels; only local icon glow and label background responded to hover. Overview roots opened directly without a synthetic Open folder node. State schema, path authorization and explicit file activation were unchanged.
+
+## Nebula.6 effect restoration
+
+The owner clarified that the layout cleanup should preserve the original motion and hover effects. Restore `GraphMotionPolicy` gentle floating, a smooth hover lens bounded to 1.16× with local neighbor response, and original folder glow/shine and hover/selection rings. Navigation transitions apply only when the displayed scene changes. Keep the compact base layout and glyphs, thin neutral straight connections, nearest-visible-ancestor Search markers and direct root navigation. Reserve local ring space for labels and connector clipping; do not restore extra hover routes, particles, preview branches or the synthetic Open folder node. Reduced motion disables nonessential movement. This correction changes presentation only; session, persistence and authority contracts remain unchanged.

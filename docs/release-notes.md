@@ -1,13 +1,13 @@
-# OmniBrille 1.2.0-nebula.5 · Spatial Explorer
+# OmniBrille 1.2.0-nebula.6 · Spatial Explorer
 
-This update calms the spatial map while retaining the saved local folder workspace. Generated artifact notes bind this guidance to the exact installer hash and commit. No test, publication or native acceptance result is implied by this template.
+This update restores the original motion and hover effects while keeping the calmer spatial layout and saved local folder workspace. Generated artifact notes bind this guidance to the exact installer hash and commit. No test, publication or native acceptance result is implied by this template.
 
 ## Install
 
-Use `OmniBrille-1.2.0-nebula.5-win-x64-setup.exe` and its matching checksum/manifest from the custom build. Run as your normal Windows user, then open **OmniBrille Spatial Explorer** from Start Menu. The self-contained package installs under `%LOCALAPPDATA%\Programs\OmniBrille`; no administrator rights or separate .NET runtime are required.
+Use `OmniBrille-1.2.0-nebula.6-win-x64-setup.exe` and its matching checksum/manifest from the custom build. Run as your normal Windows user, then open **OmniBrille Spatial Explorer** from Start Menu. The self-contained package installs under `%LOCALAPPDATA%\Programs\OmniBrille`; no administrator rights or separate .NET runtime are required.
 
 ```powershell
-Get-FileHash .\OmniBrille-1.2.0-nebula.5-win-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\OmniBrille-1.2.0-nebula.6-win-x64-setup.exe -Algorithm SHA256
 ```
 
 Preview packages are **unsigned**. Windows may show Unknown Publisher or SmartScreen. Compare the checksum with the matching artifact files; this verifies bytes, not publisher identity.
@@ -17,8 +17,9 @@ Preview packages are **unsigned**. Windows may show Unknown Publisher or SmartSc
 - Save up to 8 chosen roots and 12 independent folder pins in one local workspace.
 - Explore separate root clusters; Back/Up moves toward the workspace through real containing folders.
 - Use smaller folders and labels with muted, thin straight connections that stay clear of text.
-- Hover marks just one folder/file with a soft pulse and label highlight. Search marks the nearest visible ancestor without adding branches or moving the map.
-- Remove the redundant Open folder node, enlarging hover lens, floating positions, gold preview routes and dust. Click the parent folder itself to enter; previous/next paging retains access to all contents.
+- Restore gentle floating, smooth hover enlargement up to 16% with subtle nearby response, original folder glow/shine and local hover/selection rings. Navigation transitions run only when the displayed scene changes.
+- Search marks the nearest visible ancestor without adding branches. Labels and straight connectors stay clear of the reserved local ring area.
+- Keep the redundant Open folder node, gold preview routes and dust removed. Click the parent folder itself to enter; previous/next paging retains access to all contents.
 - Restore saved locations on launch, migrate older explicit root/pin settings, and retain unavailable drives for retry.
 - Refresh visible data through root-scoped change notifications and bounded periodic/manual reads.
 - Keep Nebula/Light appearance, reduced motion/effects and the temporary hide-controls view.

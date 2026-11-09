@@ -37,6 +37,7 @@ public sealed record SceneDiagnostics(
 {
     public int ConnectionSegments { get; init; }
     public int HoverHighlights { get; init; }
+    public double MaximumHoverScale { get; init; }
     public int MatchBadges { get; init; }
     public int OverlappingLabelPairs { get; init; }
 }
@@ -92,6 +93,10 @@ public sealed class GraphSceneControl : Control
     private readonly List<LabelBox> _glyphBoxes = new(GraphNeighborhoodBuilder.DefaultNodeBudget);
     private readonly Dictionary<string, GraphLayoutNode> _renderLayout = new(ExplorerIdentity.Comparer);
     private readonly Dictionary<string, GraphNodePresentation> _presentations = new(ExplorerIdentity.Comparer);
+    private readonly Dictionary<string, double> _lensInfluences = new(ExplorerIdentity.Comparer);
+    private readonly Dictionary<string, double> _lensFrom = new(ExplorerIdentity.Comparer);
+    private readonly Stopwatch _lensClock = new();
+    private double _maximumHoverScale = 1;
     private readonly List<PreparedLabel> _preparedLabels = new(GraphNeighborhoodBuilder.DefaultNodeBudget);
     private readonly HashSet<string> _visibleLabelIds = new(ExplorerIdentity.Comparer);
     private readonly List<ExplorerNode> _drawOrder = new(GraphNeighborhoodBuilder.DefaultNodeBudget);
@@ -261,12 +266,12 @@ public sealed class GraphSceneControl : Control
     {
         ConnectionSegments = _connectionSegments,
         HoverHighlights = _hoverHighlights,
+        MaximumHoverScale = _maximumHoverScale,
         MatchBadges = _matchBadges,
         OverlappingLabelPairs = CountOverlappingLabels(),
     };
 
-    internal bool ShouldAnimateMotion => !_reducedMotion && !ReducedEffects && _motionAllowed && _neighborhood is not null &&
-        (_hoveredNodeId is not null || _previewNodeId is not null);
+    internal bool ShouldAnimateMotion => !_reducedMotion && _motionAllowed && _neighborhood is not null;
 
     private bool ShouldTick => _animationClock.IsRunning || ShouldAnimateMotion;
 
@@ -302,7 +307,7 @@ public sealed class GraphSceneControl : Control
         string? selectedNodeId,
         IReadOnlyDictionary<string, int>? matchCounts,
         string? previewNodeId,
-        bool animate = false)
+        bool animate = true)
     {
         ArgumentNullException.ThrowIfNull(clusterRootIds);
         var sameRoots = _workspaceMode && _clusterRootIds.SequenceEqual(clusterRootIds, ExplorerIdentity.Comparer);
@@ -316,7 +321,7 @@ public sealed class GraphSceneControl : Control
         SearchActive = _matchCounts.Count > 0 || previewNodeId is not null;
         var highlights = new HashSet<string>(ExplorerIdentity.Comparer);
         if (previewNodeId is not null) { highlights.Add(previewNodeId); }
-        SetSceneCore(scene, selectedNodeId, highlights, animate, stableLayout);
+        SetSceneCore(scene, selectedNodeId, highlights, animate && !ReferenceEquals(_neighborhood, scene), stableLayout);
     }
 
     private void SetSceneCore(
@@ -324,7 +329,9 @@ public sealed class GraphSceneControl : Control
         IReadOnlySet<string>? highlights, bool animate, IReadOnlyDictionary<string, GraphLayoutNode>? stableWorkspaceLayout)
     {
         var preparationClock = Stopwatch.StartNew();
-        var previousLayout = CurrentLayout().ToDictionary(pair => pair.Key, pair => pair.Value, ExplorerIdentity.Comparer);
+        // Navigation interpolates base geometry. Apply the live hover/float
+        // once when rendering, never bake it into the next transition.
+        var previousLayout = CurrentLayout(includeMotion: false).ToDictionary(pair => pair.Key, pair => pair.Value, ExplorerIdentity.Comparer);
         if (stableWorkspaceLayout is null && !ReferenceEquals(_neighborhood, neighborhood)) { _hitTargets.Clear(); }
         _neighborhood = neighborhood;
         var admittedIds = neighborhood?.Nodes.Select(node => node.Id).ToHashSet(ExplorerIdentity.Comparer);
@@ -355,6 +362,7 @@ public sealed class GraphSceneControl : Control
             : _structureLayoutEngine.Layout(neighborhood, previousLayout);
         layoutClock.Stop();
         _layoutDuration = layoutClock.Elapsed;
+        UpdateLensInfluences();
 
         _animationFrom = _targetLayout.ToDictionary(
             pair => pair.Key,
@@ -596,6 +604,7 @@ public sealed class GraphSceneControl : Control
         {
             _hoveredNodeId = hovered;
             ToolTip.SetTip(this, hovered is null ? null : GetAutomationNode(hovered)?.Name);
+            UpdateLensInfluences();
             NodeHovered?.Invoke(this, hovered);
             UpdateTicker();
             InvalidateVisual();
@@ -609,6 +618,7 @@ public sealed class GraphSceneControl : Control
         {
             _hoveredNodeId = null;
             ToolTip.SetTip(this, null);
+            UpdateLensInfluences();
             NodeHovered?.Invoke(this, null);
             InvalidateVisual();
         }
@@ -905,8 +915,12 @@ public sealed class GraphSceneControl : Control
         var halfHeight = 19 * scale;
         var nebulaSize = NebulaGlyphSize(node, scale, isFocus);
         var glyphHalfWidth = GlyphHalfWidth(node.Kind) * scale;
+        // Reserve the local hover ring even at rest so captions and straight
+        // connections stay outside it when the original effects are active.
+        var decorationWidth = nebulaSize.Width * 1.42 + 6;
+        var decorationHeight = nebulaSize.Height * 1.42 + 6;
         _glyphBoxes.Add(isNebula
-            ? new LabelBox(center.X - nebulaSize.Width - 3, center.Y - nebulaSize.Height - 3, nebulaSize.Width * 2 + 6, nebulaSize.Height * 2 + 6)
+            ? new LabelBox(center.X - decorationWidth - 3, center.Y - decorationHeight - 3, decorationWidth * 2 + 6, decorationHeight * 2 + 6)
             : new LabelBox(center.X - glyphHalfWidth - 3, center.Y - halfHeight - 3, glyphHalfWidth * 2 + 6, halfHeight * 2 + 6));
         var hitWidth = Math.Max(44, ((isNebula ? nebulaSize.Width : halfWidth) + 8) * 2);
         var hitHeight = Math.Max(44, ((isNebula ? nebulaSize.Height : halfHeight) + 8) * 2);
@@ -1020,7 +1034,7 @@ public sealed class GraphSceneControl : Control
             maxWidth: item.MaxWidth,
             maxLines: 1));
         var width = Math.Min(maxWidth, text.WidthIncludingTrailingWhitespace);
-        var labelOffset = isNebula ? nebulaSize.Height : halfHeight;
+        var labelOffset = isNebula ? decorationHeight : halfHeight;
         var origin = new Point(center.X - (width / 2), center.Y + labelOffset + 7);
         var bounds = new LabelBox(origin.X, origin.Y, width, Math.Max(fontSize + 3, text.Height));
         var prepared = new PreparedLabel(
@@ -1089,18 +1103,16 @@ public sealed class GraphSceneControl : Control
                 // Static paths and bounded brush/pen caches keep the glow inexpensive.
                 if (!ReducedEffects)
                 {
-                    using (context.PushOpacity(isHovered ? 0.6 : 0.22))
-                    {
-                        context.DrawEllipse(FolderGlow(color), null, new Point(0, 0), 36, 29);
-                    }
+                    context.DrawEllipse(FolderGlow(color), null, new Point(0, 0), 42, 35);
+                    context.DrawGeometry(null, Pen(color, ToByte(28 * opacity), 4), NebulaFolderGeometry.Front);
                 }
-                context.DrawGeometry(Brush(palette.Background), Pen(color, ToByte((isHovered ? 255 : 215) * opacity), 1.5), NebulaFolderGeometry.Back);
+                context.DrawGeometry(Brush(palette.Background), Pen(color, ToByte(250 * opacity), 1.7), NebulaFolderGeometry.Back);
                 context.DrawGeometry(Brush(color, ToByte(32 * opacity)), null, NebulaFolderGeometry.Back);
                 context.DrawGeometry(Brush(palette.Background), null, NebulaFolderGeometry.Front);
-                context.DrawGeometry(FolderFill(color), Pen(color, ToByte((isHovered ? 255 : 215) * opacity), 1.4), NebulaFolderGeometry.Front);
+                context.DrawGeometry(FolderFill(color), Pen(color, ToByte(250 * opacity), 1.6), NebulaFolderGeometry.Front);
                 if (!ReducedEffects)
                 {
-                    context.DrawGeometry(null, Pen(palette.Text, ToByte((isHovered ? 190 : 90) * opacity), 0.65), NebulaFolderGeometry.Front);
+                    context.DrawGeometry(null, Pen(palette.Text, ToByte(160 * opacity), 0.65), NebulaFolderGeometry.Front);
                 }
             }
         }
@@ -1116,6 +1128,12 @@ public sealed class GraphSceneControl : Control
             DrawAggregate(context, center, height, Pen(color, ToByte(250 * opacity), 1.5), Brush(color, 230), node.IsNavigable);
         }
 
+        if (isSelected || isHovered)
+        {
+            context.DrawEllipse(null,
+                Pen(palette.Selection, ToByte((isSelected ? 250 : 180) * opacity), isSelected ? 1.8 : 1),
+                center, width * 1.42 + 6, height * 1.42 + 6);
+        }
         if (isHighlighted && !_workspaceMode)
         {
             // Search diamond clears the whole folder rectangle, including its corners.
@@ -1294,9 +1312,10 @@ public sealed class GraphSceneControl : Control
         context.DrawLine(pen, new Point(center.X + halfWidth, center.Y + halfHeight), new Point(center.X + halfWidth, center.Y + halfHeight - arm));
     }
 
-    private IReadOnlyDictionary<string, GraphLayoutNode> CurrentLayout()
+    private IReadOnlyDictionary<string, GraphLayoutNode> CurrentLayout(bool includeMotion = true)
     {
-        if (!_animationClock.IsRunning || _animationClock.Elapsed.TotalMilliseconds >= AnimationDurationMilliseconds)
+        _maximumHoverScale = 1;
+        if ((!_animationClock.IsRunning || _animationClock.Elapsed.TotalMilliseconds >= AnimationDurationMilliseconds) && (!includeMotion || !ShouldAnimateMotion))
         {
             return _targetLayout;
         }
@@ -1321,7 +1340,10 @@ public sealed class GraphSceneControl : Control
                 Lerp(from.Opacity, target.Opacity, amount),
                 target.Depth,
                 target.PresentationBand);
-            _renderLayout[pair.Key] = interpolated;
+            var motion = includeMotion ? GraphMotionPolicy.Evaluate(interpolated, _motionClock.Elapsed.TotalSeconds,
+                LensInfluence(pair.Key), !ShouldAnimateMotion, IsClusterRoot(pair.Key)) : interpolated;
+            _renderLayout[pair.Key] = motion;
+            _maximumHoverScale = Math.Max(_maximumHoverScale, motion.Scale / target.Scale);
         }
 
         return _renderLayout;
@@ -1365,6 +1387,35 @@ public sealed class GraphSceneControl : Control
         ExplorerNodeKind.Aggregate => 19,
         _ => 25,
     };
+
+    private double LensInfluence(string nodeId)
+    {
+        var target = _lensInfluences.GetValueOrDefault(nodeId);
+        var from = _lensFrom.GetValueOrDefault(nodeId);
+        var t = Math.Clamp(_lensClock.Elapsed.TotalMilliseconds / 180, 0, 1);
+        return Lerp(from, target, t * t * (3 - 2 * t));
+    }
+
+    private void UpdateLensInfluences()
+    {
+        var current = _targetLayout.Keys.ToDictionary(id => id, LensInfluence, ExplorerIdentity.Comparer);
+        _lensFrom.Clear();
+        foreach (var pair in current) { _lensFrom[pair.Key] = pair.Value; }
+        _lensInfluences.Clear();
+        _lensClock.Restart();
+        var active = _previewNodeId ?? _hoveredNodeId;
+        if (active is null || _neighborhood is null || !_targetLayout.TryGetValue(active, out var hovered)) { return; }
+
+        foreach (var node in _targetLayout.Values)
+        {
+            // A star's two-hop neighbors are the whole scene. Use spatial proximity
+            // instead, and keep the orientation anchor still.
+            if (IsClusterRoot(node.NodeId)) { continue; }
+            var distance = Math.Sqrt(Math.Pow(node.X - hovered.X, 2) + Math.Pow(node.Y - hovered.Y, 2));
+            _lensInfluences[node.NodeId] = ExplorerIdentity.Equals(node.NodeId, active)
+                ? 1 : 0.22 * Math.Max(0, 1 - distance / 0.23);
+        }
+    }
 
     private ExplorerNode? FindDirectionalNode(Key key)
     {

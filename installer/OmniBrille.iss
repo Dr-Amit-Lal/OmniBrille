@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.2.0-nebula.5"
+  #define AppVersion "1.2.0-nebula.6"
 #endif
 #ifndef NumericVersion
   #define NumericVersion "1.2.0.0"

@@ -1,6 +1,6 @@
 # Spatial workspace interaction contract
 
-Current product: `1.2.0-nebula.5`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
+Current product: `1.2.0-nebula.6`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
 
 | Action | Required outcome |
 | --- | --- |
@@ -17,7 +17,8 @@ Current product: `1.2.0-nebula.5`, local-only Spatial Explorer. All navigation, 
 | Reorder pin | Same saved order via drag, Alt+Up/Down or context-menu equivalents |
 | Ctrl+F | Open Search and focus its editor; normal controls stay hidden if already hidden |
 | Type search / Enter | Search chosen roots after debounce / immediately; show bounded partial-result status |
-| Hover/select result | Highlight the item or nearest visible parent inside the same chosen root; do not add nodes/edges, move glyphs or commit/save navigation |
+| Hover/select result | Highlight the item or nearest visible parent inside the same chosen root; do not add nodes/edges or commit/save navigation |
+| Hover graph item | Smooth local enlargement up to 16%, glow/shine and a local ring; gentle floating continues while the compact base layout and muted straight connectors remain, without extra routes |
 | Leave result / close Search | Clear the local marker; closing Search clears query/results |
 | Activate result | Enter folder, or enter containing folder and select file; no implicit file launch |
 | Ctrl+R | Request bounded refresh of current scene and active query |
@@ -27,6 +28,6 @@ Search row keyboard selection has the same preview semantics as pointer hover. A
 
 Pins and Search share one collapsible sidebar. Hidden controls leave a minimal Search field and Show controls button; submitting it shows Search results while normal controls stay hidden. Hide/collapse changes graph padding while preserving session state and pan/zoom. Theme/motion/effects persist; temporary interface state does not.
 
-Graph keyboard selection/invoke and automation operate on the visible bounded scene. Full result names and root-relative paths are exposed in Search automation labels. Reduced motion avoids nonessential movement; Reduced effects lowers glow. Neither setting changes content or actions. Native screen-reader behavior and display scaling require manual verification.
+Graph keyboard selection/invoke and automation operate on the visible bounded scene. Full result names and root-relative paths are exposed in Search automation labels. Reduced motion stops floating, hover enlargement and navigation transitions; Reduced effects lowers glow. Navigation transitions run only for a changed displayed scene. Labels and connectors clear the reserved local ring area. Neither setting changes content or actions. Native screen-reader behavior and display scaling require manual verification.
 
 Voice, playback, Connected/Context/Hybrid mode switches, chronological Trail, the previous accessible-list panel and diagnostics controls are removed. Historical contracts remain in Git history, not as current behavior promises.

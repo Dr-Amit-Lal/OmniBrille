@@ -59,10 +59,10 @@ public sealed class WorkspaceRendererTests
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
-    public async Task HoverKeepsGlyphsLabelsAndConnectionsStillAndOnlyMarksOneFolder(bool light, bool reducedEffects)
+    public async Task ReducedMotionKeepsGlyphsLabelsAndConnectionsStillAndOnlyMarksOneFolder(bool light, bool reducedEffects)
     {
         var scene = CreateScene();
-        var graph = new GraphSceneControl { ScenePadding = new Thickness(40), ReducedEffects = reducedEffects };
+        var graph = new GraphSceneControl { ScenePadding = new Thickness(40), ReducedEffects = reducedEffects, ReducedMotion = true };
         var window = new Window
         {
             Content = graph,
@@ -115,6 +115,148 @@ public sealed class WorkspaceRendererTests
             using (window.CaptureRenderedFrame()) { }
             Assert.Equal(0, graph.Diagnostics.HoverHighlights);
             Assert.Equal(segments, graph.Diagnostics.ConnectionSegments);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FullMotionRestoresHoverMagnificationWithoutAddingBranchesAndStopsWhenDisabled(bool light)
+    {
+        var scene = CreateScene();
+        var graph = new GraphSceneControl { ScenePadding = new Thickness(40) };
+        var window = new Window
+        {
+            Content = graph,
+            Width = 1280,
+            Height = 800,
+            RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark
+        };
+        window.Show();
+        try
+        {
+            graph.SetWorkspaceScene(scene, Roots, null, null, null, animate: false);
+            using (window.CaptureRenderedFrame()) { }
+            var peer = ControlAutomationPeer.CreatePeerForElement(graph);
+            var identities = peer.GetChildren().Select(node => node.GetAutomationId()).ToArray();
+            var zoom = graph.Diagnostics.Zoom;
+            Assert.True(graph.Diagnostics.MotionActive);
+            Assert.Equal(1, graph.Diagnostics.MaximumHoverScale);
+            var target = peer.GetChildren().Single(node => node.GetName()!.StartsWith("Letters", StringComparison.Ordinal));
+            var point = target.GetBoundingRectangle().Center;
+            window.MouseMove(window.PointToClient(new PixelPoint((int)point.X, (int)point.Y)));
+            await Task.Delay(240);
+            using (var frame = window.CaptureRenderedFrame())
+            {
+                var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
+                if (!string.IsNullOrEmpty(output))
+                {
+                    Directory.CreateDirectory(output);
+                    Assert.NotNull(frame);
+                    frame.Save(Path.Combine(output, light ? "effects-hover-light.png" : "effects-hover-dark.png"),
+                        Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                }
+            }
+            Assert.InRange(graph.Diagnostics.MaximumHoverScale, 1.01, GraphMotionPolicy.MaximumLensScale + 0.000001);
+            Assert.Equal(1, graph.Diagnostics.HoverHighlights);
+            // A directory refresh is a new scene instance. Animated snapshots
+            // must not reapply the already active hover lens a second time.
+            graph.SetWorkspaceScene(scene with { Nodes = scene.Nodes.ToArray() }, Roots, null, null, null);
+            for (var frame = 0; frame < 6; frame++)
+            {
+                await Task.Delay(50);
+                using (window.CaptureRenderedFrame()) { }
+                Assert.InRange(graph.Diagnostics.MaximumHoverScale, 1.01, GraphMotionPolicy.MaximumLensScale + 0.000001);
+                Assert.Equal(scene.Nodes.Count, graph.Diagnostics.Nodes);
+                Assert.Equal(scene.Edges.Count, graph.Diagnostics.Edges);
+                Assert.Equal(scene.Nodes.Count, graph.Diagnostics.Labels);
+                Assert.Equal(0, graph.Diagnostics.OverlappingLabelPairs);
+                Assert.Equal(identities, peer.GetChildren().Select(node => node.GetAutomationId()).ToArray());
+                Assert.All(peer.GetChildren(), node =>
+                {
+                    var bounds = node.GetBoundingRectangle();
+                    Assert.True(bounds.Width >= 44 && bounds.Height >= 44);
+                });
+            }
+            Assert.Equal(zoom, graph.Diagnostics.Zoom);
+            graph.ReducedMotion = true;
+            using (window.CaptureRenderedFrame()) { }
+            Assert.False(graph.Diagnostics.MotionActive);
+            Assert.Equal(1, graph.Diagnostics.MaximumHoverScale);
+            var frozen = peer.GetChildren().ToDictionary(node => node.GetAutomationId()!, node => node.GetBoundingRectangle());
+            await Task.Delay(100);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.All(peer.GetChildren(), node => Assert.Equal(frozen[node.GetAutomationId()!], node.GetBoundingRectangle()));
+            graph.ReducedMotion = false;
+            window.MouseMove(new Point(2, 2));
+            await Task.Delay(220);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.True(graph.Diagnostics.MotionActive);
+            Assert.Equal(0, graph.Diagnostics.HoverHighlights);
+            Assert.Equal(1, graph.Diagnostics.MaximumHoverScale);
+            graph.SetMotionActivity(false);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.False(graph.Diagnostics.MotionActive);
+            Assert.Equal(1, graph.Diagnostics.MaximumHoverScale);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DenseFullMotionHoverAndRefreshKeepEveryLabelAndTargetUsable(bool light)
+    {
+        var children = Enumerable.Range(1, 24).Select(index => $"Folder {index:D2}").ToArray();
+        var scene = new ExplorerNeighborhood("Documents", children.Prepend("Documents").Select(Folder).ToArray(),
+            children.Select(id => new ExplorerEdge("Documents", id)).ToArray(), children.Length, 0);
+        var graph = new GraphSceneControl { ScenePadding = new Thickness(64, 80, 64, 64) };
+        var window = new Window
+        {
+            Content = graph,
+            Width = 1280,
+            Height = 800,
+            RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark
+        };
+        window.Show();
+        try
+        {
+            graph.SetWorkspaceScene(scene, ["Documents"], null, null, null, animate: false);
+            using (window.CaptureRenderedFrame()) { }
+            var peer = ControlAutomationPeer.CreatePeerForElement(graph);
+            var identities = peer.GetChildren().Select(node => node.GetAutomationId()).ToArray();
+            var target = peer.GetChildren().Single(node => node.GetName()!.StartsWith("Folder 12", StringComparison.Ordinal));
+            var point = target.GetBoundingRectangle().Center;
+            window.MouseMove(window.PointToClient(new PixelPoint((int)point.X, (int)point.Y)));
+            await Task.Delay(240);
+            graph.SetWorkspaceScene(scene with { Nodes = scene.Nodes.ToArray() }, ["Documents"], null, null, null);
+            for (var index = 0; index < 5; index++)
+            {
+                await Task.Delay(90);
+                using var frame = window.CaptureRenderedFrame();
+                Assert.True(graph.Diagnostics.MotionActive);
+                Assert.Equal(1, graph.Diagnostics.HoverHighlights);
+                Assert.InRange(graph.Diagnostics.MaximumHoverScale, 1.01, GraphMotionPolicy.MaximumLensScale + 0.000001);
+                Assert.Equal(scene.Nodes.Count, graph.Diagnostics.Nodes);
+                Assert.Equal(scene.Edges.Count, graph.Diagnostics.Edges);
+                Assert.Equal(scene.Nodes.Count, graph.Diagnostics.Labels);
+                Assert.Equal(0, graph.Diagnostics.OverlappingLabelPairs);
+                Assert.Equal(identities, peer.GetChildren().Select(node => node.GetAutomationId()).ToArray());
+                Assert.All(peer.GetChildren(), node =>
+                {
+                    var bounds = node.GetBoundingRectangle();
+                    Assert.True(bounds.Width >= 44 && bounds.Height >= 44);
+                });
+                var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
+                if (index == 4 && !string.IsNullOrEmpty(output))
+                {
+                    Directory.CreateDirectory(output);
+                    Assert.NotNull(frame);
+                    frame.Save(Path.Combine(output, light ? "effects-dense-light.png" : "effects-dense-dark.png"),
+                        Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                }
+            }
         }
         finally { window.Close(); }
     }

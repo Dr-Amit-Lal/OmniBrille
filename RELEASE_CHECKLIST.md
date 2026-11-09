@@ -1,6 +1,6 @@
 # Spatial workspace release evidence checklist
 
-Current target: `1.2.0-nebula.5`. Unchecked items are requirements to record, not claims of completed tests. Historical release/run reports retain their original scope.
+Current target: `1.2.0-nebula.6`. Unchecked items are requirements to record, not claims of completed tests. Historical release/run reports retain their original scope.
 
 - [ ] Record exact source commit, clean checkout, version metadata and release artifact identity.
 - [ ] Run documentation links/fences, formatting, analyzer-enabled Release build, ordinary/headless tests and dependency audit.
@@ -12,7 +12,7 @@ Current target: `1.2.0-nebula.5`. Unchecked items are requirements to record, no
 - [ ] Run hosted install, known-retired-file fixture cleanup, unknown-file/settings preservation, launcher/registration/version, normal close/relaunch and uninstall against those exact bytes.
 - [ ] Record full predecessor upgrade separately; preserve saved roots/pins/preferences and user content.
 - [ ] Record native multi-root/pin/Search/hover/refresh, unavailable drive and cloud-placeholder behavior with synthetic data.
-- [ ] Record dense/narrow rendering, DPI/GPU, Reduced motion/effects, real UIA/Narrator/NVDA and window controls.
+- [ ] Record dense/narrow rendering across full-motion frames, bounded hover/neighbor response, local ring/label/connector clearance, scene-change transitions, DPI/GPU, Reduced motion/effects, real UIA/Narrator/NVDA and window controls.
 - [ ] Disclose unsigned/Unknown Publisher/SmartScreen status and all unperformed manual checks.
 - [ ] Retain the matching installer, sidecar, manifest, dependency inventory, generated notes and validation record; do not substitute rebuilt bytes after validation.
 
