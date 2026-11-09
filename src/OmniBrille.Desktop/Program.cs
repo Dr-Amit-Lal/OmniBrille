@@ -5,21 +5,15 @@ namespace OmniBrille.Desktop;
 
 internal static class Program
 {
-    internal static bool UseAdvancedExplorer { get; private set; }
-
     internal static string? StartupRoot { get; private set; }
 
     internal static string? StartupTheme { get; private set; }
 
-    internal static string? OmniSorSeHandoffEndpoint { get; private set; }
-
     [STAThread]
     public static void Main(string[] args)
     {
-        UseAdvancedExplorer = args.Contains("--advanced", StringComparer.OrdinalIgnoreCase);
         StartupRoot = ReadStartupRoot(args);
         StartupTheme = ReadOption(args, "--theme");
-        OmniSorSeHandoffEndpoint = ReadOption(args, "--omnisorse-handoff");
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

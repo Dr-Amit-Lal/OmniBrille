@@ -2,6 +2,14 @@
 
 All notable OmniBrille changes are recorded here. Stable releases use semantic versions; historical preview dates identify engineering checkpoints rather than public availability.
 
+## [1.2.0-nebula.4] - 2026-11-09
+
+Local Spatial Explorer fork. Chosen folders now form one saved workspace with independent root clusters and persistent pinned shortcuts. Clicking a pin preserves monitored roots; Back, Up and blank-canvas right-click follow actual containing folders toward Workspace. Choose folder supports multiple selections.
+
+Search occupies the full sidebar and previews real ancestor paths with straight gold connections, branch counts and a pulsing target. The layout adapts to smaller canvases and enlarged graph text with reachable overflow pages. Filesystem monitoring refreshes selected roots while the window is open. Verified Cloud Files placeholder tags are admitted without allowing symbolic links or junctions.
+
+Removed unused voice/audio, OmniSorSe connection/protocol, Context/Hybrid modes, the My Files window and their dependencies/assets. Installer cleanup targets only known retired files and preserves unknown content and user settings. Added persisted-state, navigation/search race, renderer, keyboard, monitoring and Windows installer lifecycle checks. See [ADR 0006](docs/decisions/0006-local-spatial-workspace.md) for the current product boundary.
+
 ## [1.2.0] - 2026-09-11
 
 Third stable Windows x64 release. [Download v1.2.0](https://github.com/nishdel/OmniBrille/releases/tag/v1.2.0). This release integrates PR #11 and the implementation findings from issues #1–#9. It is unsigned and intended for continued manual acceptance testing alongside the automated release qualification.

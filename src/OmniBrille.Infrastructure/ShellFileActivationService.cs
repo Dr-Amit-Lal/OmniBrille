@@ -3,7 +3,7 @@ using OmniBrille.Core;
 
 namespace OmniBrille.Infrastructure;
 
-/// <summary>Launches ordinary standalone files after a last-moment authority and type check.</summary>
+/// <summary>Launches local files after a last-moment authority and type check.</summary>
 public sealed class ShellFileActivationService : IFileActivationService
 {
     private static readonly HashSet<string> HighRiskExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -21,62 +21,55 @@ public sealed class ShellFileActivationService : IFileActivationService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        return Task.Run(() => OpenFile(accessRoot, path, cancellationToken), cancellationToken);
+    }
+
+    private static FileActivationResult OpenFile(string accessRoot, string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             if (!Path.IsPathFullyQualified(accessRoot) ||
                 !Path.IsPathFullyQualified(path) ||
                 !PathBoundary.IsWithin(accessRoot, path))
             {
-                return Task.FromResult(FileActivationResult.OutsideAccessRoot);
+                return FileActivationResult.OutsideAccessRoot;
             }
 
             var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(accessRoot));
             var fullPath = Path.GetFullPath(path);
             if (!File.Exists(fullPath))
             {
-                return Task.FromResult(FileActivationResult.NotFound);
+                return FileActivationResult.NotFound;
             }
 
             var info = new FileInfo(fullPath);
-            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+            if (!FileMapPathGuard.IsOrdinaryPath(fullRoot, fullPath, requireDirectory: false))
             {
-                return Task.FromResult(FileActivationResult.ReparsePointBlocked);
-            }
-
-            var parent = info.Directory;
-            while (parent is not null && !PathBoundary.Comparer.Equals(parent.FullName, fullRoot))
-            {
-                if ((parent.Attributes & FileAttributes.ReparsePoint) != 0)
-                {
-                    return Task.FromResult(FileActivationResult.ReparsePointBlocked);
-                }
-
-                parent = parent.Parent;
-            }
-
-            if (parent is null)
-            {
-                return Task.FromResult(FileActivationResult.OutsideAccessRoot);
+                return FileActivationResult.ReparsePointBlocked;
             }
 
             if (HighRiskExtensions.Contains(info.Extension))
             {
-                return Task.FromResult(FileActivationResult.HighRiskTypeBlocked);
+                return FileActivationResult.HighRiskTypeBlocked;
             }
 
+            // An explicit Open action may let the sync provider hydrate a cloud file.
+            // Enumeration, search and classification never open its contents.
+            cancellationToken.ThrowIfCancellationRequested();
             using var process = Process.Start(new ProcessStartInfo
             {
                 FileName = fullPath,
                 UseShellExecute = true,
                 WorkingDirectory = info.DirectoryName ?? accessRoot,
             });
-            return Task.FromResult(FileActivationResult.Opened);
+            return FileActivationResult.Opened;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                           ArgumentException or System.ComponentModel.Win32Exception or
                                           InvalidOperationException or NotSupportedException)
         {
-            return Task.FromResult(FileActivationResult.Failed);
+            return FileActivationResult.Failed;
         }
     }
 }

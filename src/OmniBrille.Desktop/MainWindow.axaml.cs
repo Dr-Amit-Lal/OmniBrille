@@ -1,2402 +1,528 @@
-using System.Globalization;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using OmniBrille.Core;
 using OmniBrille.Desktop.Presentation;
-using OmniBrille.Desktop.Support;
+using OmniBrille.Desktop.Rendering;
 using OmniBrille.Infrastructure;
-using OmniBrille.Infrastructure.OmniSorSe;
-using OmniBrille.Infrastructure.Voice;
-using Protocol = OmniSorSe.ExplorerProtocol;
 
 namespace OmniBrille.Desktop;
 
-public sealed partial class MainWindow : Window, IDisposable, IVoiceActionTarget
+public sealed partial class MainWindow : Window, IDisposable
 {
-    private readonly ExplorerSession _session;
+    private readonly SpatialWorkspaceSession _session;
     private readonly IVisualPreferencesStore _preferencesStore;
-    private readonly IOmniSorSeConnectionCoordinator _connection;
-    private readonly string? _handoffEndpoint;
-    private readonly DispatcherTimer _diagnosticsTimer;
-    private readonly DispatcherTimer _voiceVisualTimer;
-    private readonly DispatcherTimer _voiceTranscriptTimer;
-    private readonly DispatcherTimer _detailsTypingTimer;
-    private readonly VoiceInteractionCoordinator _voice;
-    private readonly IFileActivationService _fileActivation;
+    private readonly bool _monitorChanges;
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = new(PathBoundary.Comparer);
+    private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(850) };
+    private readonly DispatcherTimer _recheckTimer = new() { Interval = TimeSpan.FromSeconds(20) };
+    private readonly DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(240) };
     private VisualPreferences _preferences;
-    private ExplorerNeighborhood? _lastRenderedNeighborhood;
-    private bool _detailsDismissed;
+    private IReadOnlyList<FileMapSearchHit>? _renderedSearch;
+    private string? _startupRoot;
+    private string _pinSignature = string.Empty;
+    private string _rootSignature = string.Empty;
+    private string _lastSubmittedSearchText = string.Empty;
+    private bool _ready;
+    private bool _syncing;
+    private bool _disposed;
+    private bool _searchVisible;
     private bool _interfaceHidden;
-    private bool _isApplyingPreferences;
-    private bool _isSwitchingViewMode;
-    private bool _isApplyingContextFilters;
-    private bool _isSynchronizingAccessibleList;
-    private bool _voicePulseHigh;
-    private string _detailsTypingTarget = string.Empty;
-    private (TextBlock Control, string Text)[] _detailsTypingFields = [];
-    private int _detailsTypingIndex;
-    private string? _lastDetailsNodeId;
-    private string? _lastAnnouncement;
-    private bool _isDisposed;
+    private bool _sidebarCollapsed;
+    private bool _refreshPending;
+    private bool _updating;
+    private bool _watcherBuildRunning;
+    private bool _watcherReconcilePending;
+    private string _watcherSignature = string.Empty;
+    private int _watcherRevision;
+    private int _refreshQueued;
 
-    public MainWindow()
-        : this(new ExplorerSession(), new JsonVisualPreferencesStore(), null, null, null, null)
-    {
-    }
+    public MainWindow() : this(new SpatialWorkspaceSession()) { }
 
-    public MainWindow(string? startupRoot, string? startupTheme, string? handoffEndpoint = null)
-        : this(
-            new ExplorerSession(),
-            new JsonVisualPreferencesStore(),
-            startupRoot,
-            startupTheme,
-            null,
-            handoffEndpoint)
+    public MainWindow(string? startupRoot, string? startupTheme) : this(new SpatialWorkspaceSession())
     {
-    }
-
-    public MainWindow(
-        ExplorerSession session,
-        IVisualPreferencesStore preferencesStore,
-        string? startupRoot = null,
-        string? startupTheme = null,
-        IOmniSorSeConnectionCoordinator? connection = null,
-        string? handoffEndpoint = null,
-        IAudioCaptureService? audioCapture = null,
-        ISpeechRecognitionProvider? speechRecognition = null,
-        IFileActivationService? fileActivation = null,
-        IPinnedFoldersStore? pinnedFoldersStore = null)
-    {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
-        _preferencesStore = preferencesStore ?? throw new ArgumentNullException(nameof(preferencesStore));
-        _connection = connection ?? new OmniSorSeConnectionCoordinator();
-        _handoffEndpoint = handoffEndpoint;
-        _fileActivation = fileActivation ?? new ShellFileActivationService();
-        _preferences = _preferencesStore.Load().Normalize();
-        _pinStore = pinnedFoldersStore ?? new JsonPinnedFoldersStore();
-        _pins = _pinStore.Load().Normalize();
-        _voice = new VoiceInteractionCoordinator(
-            audioCapture ?? new WindowsWaveInAudioCaptureService(),
-            speechRecognition ?? new WhisperCliSpeechRecognitionProvider(),
-            this);
-        if (!string.IsNullOrWhiteSpace(startupTheme))
+        _startupRoot = startupRoot;
+        if (startupTheme is not null)
         {
             _preferences = (_preferences with { Theme = startupTheme }).Normalize();
+            ApplyPreferences();
         }
+    }
 
-        _isApplyingPreferences = true;
+    public MainWindow(SpatialWorkspaceSession session, IVisualPreferencesStore? preferencesStore = null, bool monitorChanges = true)
+    {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+        _preferencesStore = preferencesStore ?? new JsonVisualPreferencesStore();
+        _monitorChanges = monitorChanges;
+        _preferences = _preferencesStore.Load().Normalize();
+        InitializeComponent();
+        _ready = true;
+        ApplyPreferences();
+        _session.Changed += OnSessionChanged;
+        GraphScene.NodeSelected += (_, id) => _session.Select(id);
+        GraphScene.NodeActivated += async (_, id) =>
+        {
+            if (_session.NodeById(id)?.Kind == ExplorerNodeKind.File)
+            {
+                _session.Select(id);
+                await _session.OpenSelectedAsync();
+            }
+            else { await _session.NavigateAsync(id); }
+        };
+        GraphScene.TextScaleChanged += (_, _) => UpdateView();
+        GraphScene.BackRequested += async (_, _) => await _session.GoUpAsync();
+        GraphScene.DismissRequested += (_, _) => { SettingsPanel.IsVisible = false; _session.Select(null); };
+        KeyDown += OnWindowKeyDown;
+        SearchResultsList.AddHandler(KeyDownEvent, OnSearchResultsKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
+        SearchBox.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
+        SizeChanged += (_, _) => UpdateView();
+        Activated += (_, _) => GraphScene.SetMotionActivity(true);
+        Deactivated += (_, _) => GraphScene.SetMotionActivity(false);
+        _searchTimer.Tick += async (_, _) => await RunCurrentSearchAsync();
+        _refreshTimer.Tick += async (_, _) => await RefreshPendingAsync();
+        _recheckTimer.Tick += (_, _) =>
+        {
+            ReconcileWatchers(force: true);
+            // A periodic bounded rescan recovers missed/overflow events and reconnected drives.
+            QueueRefresh();
+        };
+        InitializePinDragging();
+        Opened += (_, _) => Initialization = InitializeAsync();
+        Closed += (_, _) => Dispose();
+        UpdateView();
+    }
+
+    public SpatialWorkspaceSession Session => _session;
+
+    public Task Initialization { get; private set; } = Task.CompletedTask;
+
+    private async Task InitializeAsync()
+    {
+        await _session.InitializeAsync(_startupRoot);
+        if (_disposed) { return; }
+        UpdateView();
+        if (_monitorChanges) { _recheckTimer.Start(); }
+    }
+
+    private void OnSessionChanged()
+    {
+        if (_disposed) { return; }
+        if (Dispatcher.UIThread.CheckAccess()) { UpdateView(); }
+        else { Dispatcher.UIThread.Post(UpdateView); }
+    }
+
+    private void UpdateView()
+    {
+        if (!_ready || _disposed || _updating) { return; }
+        _updating = true;
         try
         {
-            InitializeComponent();
+            var state = _session.State;
+            var compact = ClientSize.Width > 0 && ClientSize.Width < 1050;
+            var shortCanvas = ClientSize.Height > 0 && ClientSize.Height < 650;
+            var textScale = GraphScene.TextScale;
+            var overviewLimit = shortCanvas ? 0 : compact ? 1 : state.Roots.Count > 4 ? 2 : 6;
+            _session.SetOverviewChildLimit((int)(overviewLimit / textScale));
+            _session.SetFocusedPageSize(Math.Max(4, (int)((shortCanvas ? 4 : compact ? 8 : 24) / (textScale * textScale))));
+            var sidebarWidth = compact ? 252 : 304;
+            SidePanel.Width = _sidebarCollapsed ? 80 : sidebarWidth;
+            SidePanel.IsVisible = !_interfaceHidden || _searchVisible;
+            SidebarTabs.IsVisible = !_interfaceHidden;
+            SearchInputPanel.IsVisible = !_interfaceHidden;
+            PinnedTabButton.IsVisible = !_sidebarCollapsed;
+            SearchTabButton.IsVisible = !_sidebarCollapsed;
+            CollapsePinsButton.Content = _sidebarCollapsed ? "›" : "‹";
+            AutomationProperties.SetName(CollapsePinsButton, _sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar");
+            PinnedPanel.IsVisible = !_sidebarCollapsed && !_searchVisible;
+            SearchPanel.IsVisible = !_sidebarCollapsed && _searchVisible;
+            PinnedTabButton.Classes.Set("active", !_searchVisible);
+            SearchTabButton.Classes.Set("active", _searchVisible);
+            TitleBar.IsVisible = !_interfaceHidden;
+            Toolbar.IsVisible = !_interfaceHidden;
+            ZoomHud.IsVisible = !_interfaceHidden;
+            StatusPanel.IsVisible = !_interfaceHidden;
+            BreadcrumbPanel.IsVisible = !_interfaceHidden && state.Roots.Count > 0;
+            MinimalSearchPanel.IsVisible = _interfaceHidden;
+            var left = SidePanel.IsVisible ? (_sidebarCollapsed ? 120 : sidebarWidth + 52) : 28;
+            GraphScene.ScenePadding = new Thickness(left, _interfaceHidden ? 88 : 196, 36, 96);
+            GraphScene.SearchActive = _searchVisible && _session.SearchQuery.Length > 0;
+            GraphScene.SetWorkspaceScene(_session.Scene, _session.ClusterRootIds, _session.SelectedNodeId,
+                _session.PreviewPathNodeIds, _session.MatchCounts, _session.PreviewNodeId);
+            BreadcrumbPanel.Margin = new Thickness(left, 128, 24, 0);
+            BreadcrumbPanel.MaxWidth = Math.Max(200, ClientSize.Width - left - 60);
+            BreadcrumbText.Text = _session.IsOverview ? "Workspace" : Path.GetFileName(_session.State.CurrentPath) is { Length: > 0 } name ? name : _session.State.CurrentPath;
+            BreadcrumbDetailText.Text = _session.IsOverview
+                ? $"{state.Roots.Count} folder{(state.Roots.Count == 1 ? string.Empty : "s")}"
+                : DisplayLocation(state.CurrentRoot!, state.CurrentPath!);
+            BackButton.IsEnabled = !_session.IsOverview && !_session.IsBusy;
+            UpButton.IsEnabled = BackButton.IsEnabled;
+            PinCurrentFolderButton.IsEnabled = !_session.IsOverview && !_session.IsBusy;
+            WelcomePanel.IsVisible = !_interfaceHidden && state.Roots.Count == 0 && _session.IsOverview;
+            WelcomePanel.Width = Math.Min(430, Math.Max(300, ClientSize.Width - left - 52));
+            WelcomePanel.Margin = new Thickness(left, 80, 24, 0);
+            StatusText.Text = _session.Status;
+            ToolTip.SetTip(StatusText, _session.Status);
+            SavedStatusText.Text = _session.Status.Contains("save", StringComparison.OrdinalIgnoreCase) ? _session.Status : "Workspace saved automatically";
+            UpdatePinRows();
+            UpdateRootRows();
+            UpdateSearchRows();
+            SearchSummaryText.Text = _session.IsSearching ? "Searching your workspace…"
+                : _session.SearchQuery.Length == 0 ? "All workspace folders"
+                : $"{_session.SearchResults.Count} matches · All workspace folders";
+            var selected = _session.SelectedNodeId is { } selectedId ? _session.NodeById(selectedId) : null;
+            FileDetailsPanel.IsVisible = !_interfaceHidden && !_searchVisible && selected?.Kind == ExplorerNodeKind.File;
+            SelectedFileText.Text = selected?.Name;
+            SelectedFilePathText.Text = selected?.Path;
+            ReconcileWatchers();
         }
-        finally
-        {
-            _isApplyingPreferences = false;
-        }
+        finally { _updating = false; }
+    }
 
-        _session.StateChanged += OnSessionStateChanged;
-        _session.ProviderFailed += OnProviderFailed;
-        _connection.StateChanged += OnConnectionStateChanged;
-        _voice.StateChanged += OnVoiceStateChanged;
-        AccessibleNodesList.AddHandler(
-            InputElement.KeyDownEvent,
-            OnAccessibleNodesKeyDown,
-            RoutingStrategies.Tunnel,
-            handledEventsToo: true);
-        GraphScene.NodeSelected += OnGraphNodeSelected;
-        GraphScene.NodeActivated += OnGraphNodeActivated;
-        GraphScene.BackRequested += async (_, _) => await GoBackAsync();
-        GraphScene.DismissRequested += (_, _) => DismissTransientSurfaces();
-        KeyDown += OnWindowKeyDown;
-        Activated += (_, _) => UpdateMotionActivity();
-        Deactivated += (_, _) => UpdateMotionActivity();
-        PropertyChanged += (_, args) =>
+    private void UpdateRootRows()
+    {
+        var signature = string.Join('\n', _session.State.Roots.Select(root => root.Path + "\t" + root.Label));
+        if (signature == _rootSignature && RootsEntries.Children.Count == _session.State.Roots.Count) { return; }
+        _rootSignature = signature;
+        RootsEntries.Children.Clear();
+        foreach (var root in _session.State.Roots)
         {
-            if (args.Property == WindowStateProperty)
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,44") };
+            var open = FolderButton(root.Path, root.Label);
+            AutomationProperties.SetName(open, "Open workspace folder " + root.Label);
+            open.Click += async (_, _) => await _session.OpenRootAsync(root.Path);
+            var remove = new Button { Content = "×", Classes = { "hud", "icon" } };
+            AutomationProperties.SetName(remove, "Remove " + root.Label + " from workspace");
+            ToolTip.SetTip(remove, "Remove from workspace. Files stay in place.");
+            remove.Click += (_, _) => _session.RemoveRoot(root.Path);
+            Grid.SetColumn(remove, 1);
+            row.Children.Add(open);
+            row.Children.Add(remove);
+            RootsEntries.Children.Add(row);
+        }
+    }
+
+    private void UpdateSearchRows()
+    {
+        if (ReferenceEquals(_renderedSearch, _session.SearchResults)) { return; }
+        _renderedSearch = _session.SearchResults;
+        _syncing = true;
+        try
+        {
+            var rows = new List<ListBoxItem>();
+            foreach (var hit in _session.SearchResults)
             {
-                UpdateMotionActivity();
+                var content = new Grid { ColumnDefinitions = new ColumnDefinitions("28,*"), Margin = new Thickness(10, 12), ColumnSpacing = 9 };
+                content.Children.Add(new TextBlock { Text = hit.Kind == ExplorerNodeKind.Folder ? "▱" : "▤", FontSize = 23, VerticalAlignment = VerticalAlignment.Center });
+                var labels = new StackPanel { Spacing = 5 };
+                labels.Children.Add(new TextBlock { Text = hit.Name, FontWeight = Avalonia.Media.FontWeight.SemiBold, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+                labels.Children.Add(new TextBlock { Text = DisplayLocation(hit.RootPath, Path.GetDirectoryName(hit.Path) ?? hit.RootPath), FontSize = 11, Opacity = 0.8, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+                Grid.SetColumn(labels, 1);
+                content.Children.Add(labels);
+                var row = new ListBoxItem { Content = content, Tag = hit, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                AutomationProperties.SetName(row, hit.Name + ", " + DisplayLocation(hit.RootPath, hit.Path));
+                ToolTip.SetTip(row, hit.Path);
+                row.PointerEntered += async (_, _) => await _session.PreviewSearchHitAsync(hit);
+                row.PointerExited += async (_, _) => await _session.PreviewSearchHitAsync(null);
+                rows.Add(row);
             }
-        };
-        Closed += (_, _) => Dispose();
-
-        _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
-        if (_preferences.DiagnosticsVisible)
-        {
-            _diagnosticsTimer.Start();
+            SearchResultsList.ItemsSource = rows;
         }
+        finally { _syncing = false; }
+    }
 
-        _voiceVisualTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
-        _voiceVisualTimer.Tick += (_, _) => UpdateVoiceListeningVisual();
-        _voiceTranscriptTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
-        _voiceTranscriptTimer.Tick += (_, _) =>
-        {
-            _voiceTranscriptTimer.Stop();
-            _voice.DismissTranscript();
-        };
-        _detailsTypingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(18) };
-        _detailsTypingTimer.Tick += (_, _) => AdvanceDetailsTyping();
+    private string DisplayLocation(string root, string path)
+    {
+        var label = _session.State.Roots.FirstOrDefault(item => PathBoundary.Comparer.Equals(item.Path, root))?.Label ?? Path.GetFileName(root);
+        var relative = Path.GetRelativePath(root, path);
+        return relative == "." ? label : label + " / " + relative.Replace(Path.DirectorySeparatorChar, '/');
+    }
 
-        InitializePinnedFolders();
-        ApplyPreferencesToControls();
-        UpdateVoiceView();
+    private void ShowSearch()
+    {
+        _sidebarCollapsed = false;
+        _searchVisible = true;
+        SettingsPanel.IsVisible = false;
         UpdateView();
-
-        SizeChanged += (_, _) =>
-        {
-            UpdateResponsiveShellVisibility();
-            UpdateMotionActivity();
-        };
-        Opened += async (_, _) => await InitializeProviderAsync(startupRoot);
-    }
-
-    public ExplorerSession Session => _session;
-
-    public VisualPreferences Preferences => _preferences;
-
-    public IOmniSorSeConnectionCoordinator Connection => _connection;
-
-    public VoiceInteractionCoordinator Voice => _voice;
-
-    public VoiceActionContext CaptureVoiceContext() => new(_session.ProviderGeneration);
-
-    public bool IsVoiceContextCurrent(VoiceActionContext context) =>
-        context.ProviderGeneration == _session.ProviderGeneration;
-
-    public Task<VoiceActionResult> ExecuteVoiceIntentAsync(
-        VoiceIntent intent,
-        CancellationToken cancellationToken)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            return ExecuteVoiceIntentCoreAsync(intent, cancellationToken);
-        }
-
-        var completion = new TaskCompletionSource<VoiceActionResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(async () =>
-        {
-            try
-            {
-                completion.TrySetResult(await ExecuteVoiceIntentCoreAsync(intent, cancellationToken));
-            }
-            catch (OperationCanceledException)
-            {
-                completion.TrySetCanceled(cancellationToken);
-            }
-            catch (Exception exception)
-            {
-                completion.TrySetException(exception);
-            }
-        });
-        return completion.Task;
-    }
-
-    public string CreateSanitizedDiagnosticsReport()
-    {
-        var graph = GraphScene.Diagnostics;
-        var rain = DataRain.Diagnostics;
-        var connection = _connection.Diagnostics;
-        var voice = _voice.Diagnostics;
-        var informationalVersion = typeof(MainWindow).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion ?? typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "Unknown";
-        var capabilities = _connection.ProtocolInfo?.Capabilities.ToString() ?? "None";
-
-        return SanitizedDiagnosticsReport.Create(new SanitizedDiagnosticsSnapshot(
-            informationalVersion,
-            RuntimeInformation.OSDescription.Trim(),
-            RuntimeInformation.FrameworkDescription,
-            RuntimeInformation.RuntimeIdentifier,
-            _session.ProviderDisplayName,
-            connection.State.ToString(),
-            _session.ViewMode.ToString(),
-            connection.ProtocolVersion,
-            connection.Transport,
-            capabilities,
-            _session.IsContextAvailable,
-            _preferences.ReducedMotion,
-            _preferences.ReducedEffects,
-            voice.State.ToString(),
-            voice.Provider,
-            voice.ModelState,
-            voice.InitializationDuration,
-            voice.CaptureDuration,
-            voice.TranscriptionDuration,
-            voice.ExecutionDuration,
-            voice.TranscriptLength,
-            voice.Classification,
-            voice.LastErrorCategory,
-            graph.Nodes,
-            _session.SceneBudget,
-            graph.Edges,
-            graph.Labels,
-            graph.Zoom,
-            graph.LayoutDuration,
-            graph.ScenePreparationDuration,
-            graph.LastRenderDuration,
-            _session.LastLoadDuration,
-            connection.LastRequestDuration,
-            connection.TimeoutCount,
-            connection.ReconnectCount,
-            connection.StaleResponseRejectionCount,
-            connection.LastFailureCategory,
-            graph.RenderAllocatedBytes,
-            graph.TextCacheEntries,
-            graph.ResourceCacheEntries,
-            rain.RenderedTokens,
-            rain.LastRenderDuration));
-    }
-
-    private async Task InitializeProviderAsync(string? startupRoot)
-    {
-        if (!string.IsNullOrWhiteSpace(_handoffEndpoint))
-        {
-            var connected = await _connection.ConnectFromHandoffAsync(_handoffEndpoint);
-            if (connected)
-            {
-                PopulateConnectedRoots();
-                await OpenConnectedRootAsync(_connection.AccessibleRoots[0]);
-                return;
-            }
-
-            RestoreInterface();
-            ConnectionPanel.IsVisible = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(startupRoot))
-        {
-            await OpenRootAsync(startupRoot);
-        }
-
-        UpdateConnectionView();
-        UpdateWelcomeAndStatusVisibility();
+        if (_interfaceHidden) { MinimalSearchBox.Focus(); } else { SearchBox.Focus(); }
     }
 
     private async void OnChooseFolderClick(object? sender, RoutedEventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel?.StorageProvider is null)
-        {
-            SetTransientStatus("The operating-system folder picker is unavailable.");
-            return;
-        }
-
-        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "Choose an OmniBrille access root",
-            AllowMultiple = false,
-        });
-        var selected = folders.Count > 0 ? folders[0] : null;
-        if (selected is null)
-        {
-            return;
-        }
-
-        var path = selected.Path.LocalPath;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            SetTransientStatus("That location does not expose a local filesystem path.");
-            return;
-        }
-
-        _connection.UseStandalone();
-        ConnectionPanel.IsVisible = false;
-        await OpenRootAsync(path);
+        var storage = StorageProvider;
+        if (storage is null) { return; }
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose folders for your workspace", AllowMultiple = true });
+        var paths = folders.Select(folder => folder.TryGetLocalPath()).OfType<string>().ToArray();
+        if (paths.Length > 0 && !_disposed) { await _session.AddRootsAsync(paths); }
     }
 
-    private void OnConnectionClick(object? sender, RoutedEventArgs e)
+    private async void OnWorkspaceClick(object? sender, RoutedEventArgs e) { GraphScene.ResetView(); await _session.ShowWorkspaceAsync(); }
+    private async void OnUpClick(object? sender, RoutedEventArgs e) => await _session.GoUpAsync();
+    private async void OnRefreshClick(object? sender, RoutedEventArgs e) => await _session.RefreshAsync();
+    private void OnSearchToggleClick(object? sender, RoutedEventArgs e) => ShowSearch();
+    private async void OnPinnedTabClick(object? sender, RoutedEventArgs e)
     {
-        ConnectionPanel.IsVisible = !ConnectionPanel.IsVisible;
-        if (ConnectionPanel.IsVisible)
-        {
-            CollapseSearchEditor();
-            SettingsPanel.IsVisible = false;
-            AccessibleListPanel.IsVisible = false;
-            ContextFilterPanel.IsVisible = false;
-            HistoryPanel.IsVisible = false;
-            SearchResultsPanel.IsVisible = false;
-            _detailsDismissed = true;
-            DetailsPanel.IsVisible = false;
-            PopulateConnectedRoots();
-            UpdateConnectionView();
-            if (ConnectedRootPicker.IsVisible)
-            {
-                ConnectedRootPicker.Focus();
-            }
-            else
-            {
-                ChooseStandaloneFolderButton.Focus();
-            }
-        }
-        else
-        {
-            GraphScene.Focus();
-        }
-
-        UpdateWelcomeAndStatusVisibility();
+        _searchTimer.Stop();
+        _searchVisible = false;
+        _syncing = true;
+        SearchBox.Text = string.Empty;
+        MinimalSearchBox.Text = string.Empty;
+        _syncing = false;
+        _lastSubmittedSearchText = string.Empty;
+        await _session.SearchAsync(string.Empty);
+        UpdateView();
     }
+    private async void OnSearchClick(object? sender, RoutedEventArgs e) => await RunCurrentSearchAsync(force: true);
 
-    private async void OnReconnectClick(object? sender, RoutedEventArgs e)
+    private async Task RunCurrentSearchAsync(bool force = false)
     {
-        var connected = await _connection.RetryAsync();
-        if (connected)
-        {
-            PopulateConnectedRoots();
-            await OpenConnectedRootAsync(_connection.AccessibleRoots[0]);
-        }
-
-        UpdateConnectionView();
+        _searchTimer.Stop();
+        var text = (SearchBox.Text ?? string.Empty).Trim();
+        if (!force && string.Equals(text, _lastSubmittedSearchText, StringComparison.Ordinal)) { return; }
+        // TextChanged can arrive after an explicit submission. Remember the submitted text
+        // before awaiting acquisition so its delayed echo cannot replace focused result rows.
+        _lastSubmittedSearchText = text;
+        await _session.SearchAsync(text);
     }
-
-    private void OnUseStandaloneClick(object? sender, RoutedEventArgs e)
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
-        _connection.UseStandalone();
-        _session.Reset();
-        ConnectedRootPicker.ItemsSource = null;
-        ConnectionPanel.IsVisible = false;
-        ChooseStandaloneFolderButton.Focus();
-        UpdateConnectionView();
-        UpdateWelcomeAndStatusVisibility();
+        if (!_ready || _syncing) { return; }
+        _syncing = true;
+        if (ReferenceEquals(sender, MinimalSearchBox))
+        {
+            if (SearchBox.Text != MinimalSearchBox.Text) { SearchBox.Text = MinimalSearchBox.Text; }
+        }
+        else if (MinimalSearchBox.Text != SearchBox.Text) { MinimalSearchBox.Text = SearchBox.Text; }
+        _syncing = false;
+        _searchTimer.Stop();
+        if (!string.Equals((SearchBox.Text ?? string.Empty).Trim(), _lastSubmittedSearchText, StringComparison.Ordinal)) { _searchTimer.Start(); }
     }
-
-    private async void OnOpenConnectedRootClick(object? sender, RoutedEventArgs e)
-    {
-        if (ConnectedRootPicker.SelectedItem is not ConnectedRootItem item)
-        {
-            SetTransientStatus("Select an OmniSorSe-authorized root first.");
-            return;
-        }
-
-        await OpenConnectedRootAsync(item.Node);
-    }
-
-    private async void OnStructureModeCheckedChanged(object? sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton { IsChecked: true })
-        {
-            await SwitchToStructureAsync();
-        }
-    }
-
-    private async void OnStructureModeClick(object? sender, RoutedEventArgs e) =>
-        await SwitchToStructureAsync();
-
-    private async Task SwitchToStructureAsync()
-    {
-        if (_isApplyingPreferences || _isSwitchingViewMode || string.IsNullOrEmpty(_session.AccessRoot))
-        {
-            return;
-        }
-
-        _isSwitchingViewMode = true;
-        try
-        {
-            await _session.SwitchToStructureAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            _isSwitchingViewMode = false;
-        }
-    }
-
-    private async void OnContextModeCheckedChanged(object? sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton { IsChecked: true })
-        {
-            await SwitchToContextAsync();
-        }
-    }
-
-    private async void OnContextModeClick(object? sender, RoutedEventArgs e) =>
-        await SwitchToContextAsync();
-
-    private async Task SwitchToContextAsync()
-    {
-        if (_isApplyingPreferences || _isSwitchingViewMode)
-        {
-            return;
-        }
-
-        if (string.IsNullOrEmpty(_session.AccessRoot))
-        {
-            SetTransientStatus("Connect to OmniSorSe and open an authorized root before exploring Context.");
-            UpdateView();
-            return;
-        }
-
-        _isSwitchingViewMode = true;
-        try
-        {
-            await _session.SwitchToContextAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            _isSwitchingViewMode = false;
-        }
-    }
-
-    private async void OnHybridModeCheckedChanged(object? sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton { IsChecked: true })
-        {
-            await SwitchToHybridAsync();
-        }
-    }
-
-    private async void OnHybridModeClick(object? sender, RoutedEventArgs e) =>
-        await SwitchToHybridAsync();
-
-    private async Task SwitchToHybridAsync()
-    {
-        if (_isApplyingPreferences || _isSwitchingViewMode)
-        {
-            return;
-        }
-
-        if (string.IsNullOrEmpty(_session.AccessRoot))
-        {
-            SetTransientStatus("Connect to OmniSorSe and open an authorized root before exploring Hybrid.");
-            UpdateView();
-            return;
-        }
-
-        _isSwitchingViewMode = true;
-        try
-        {
-            await _session.SwitchToHybridAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            _isSwitchingViewMode = false;
-        }
-    }
-
-    private async Task OpenConnectedRootAsync(Protocol.ExplorerNode root)
-    {
-        if (_connection.Client is null || _connection.ProtocolInfo is null)
-        {
-            SetTransientStatus("OmniSorSe is not connected.");
-            return;
-        }
-
-        try
-        {
-            var provider = new OmniSorSeConnectedProvider(_connection.Client, _connection.ProtocolInfo, root);
-            await _session.OpenRootAsync(provider, provider);
-            GraphScene.ResetView();
-            ConnectionPanel.IsVisible = false;
-        }
-        catch (OperationCanceledException)
-        {
-            SetTransientStatus("Connected loading cancelled.");
-        }
-        catch (Exception exception) when (IsConnectionFailure(exception))
-        {
-            _connection.ReportDisconnected(exception);
-            SetTransientStatus("OmniSorSe disconnected. The application remains available in standalone mode.");
-        }
-    }
-
-    private void PopulateConnectedRoots()
-    {
-        var items = _connection.AccessibleRoots.Select(node => new ConnectedRootItem(node)).ToArray();
-        ConnectedRootPicker.ItemsSource = items;
-        ConnectedRootPicker.SelectedIndex = items.Length > 0 ? 0 : -1;
-    }
-
-    private async void OnBackClick(object? sender, RoutedEventArgs e) => await GoBackAsync();
-
-    private async void OnUpClick(object? sender, RoutedEventArgs e) => await GoUpAsync();
-
-    private async void OnRootClick(object? sender, RoutedEventArgs e) => await GoRootAsync();
-
-    private async Task GoRootAsync()
-    {
-        try
-        {
-            await _session.GoRootAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async Task GoUpAsync()
-    {
-        try
-        {
-            await _session.GoUpAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private void OnHistoryClick(object? sender, RoutedEventArgs e)
-    {
-        if (_session.NavigationTrail.Count == 0)
-        {
-            return;
-        }
-
-        var showHistory = !HistoryPanel.IsVisible;
-        ConnectionPanel.IsVisible = false;
-        SettingsPanel.IsVisible = false;
-        AccessibleListPanel.IsVisible = false;
-        ContextFilterPanel.IsVisible = false;
-        HistoryPanel.IsVisible = false;
-        CollapseSearchEditor();
-        _detailsDismissed = true;
-        DetailsPanel.IsVisible = false;
-        HistoryPanel.IsVisible = showHistory;
-        UpdateHistoryView();
-        UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        for (var visual = e.Source as Visual; visual is not null && visual != CustomTitleBar; visual = visual.GetVisualParent())
-        {
-            if (visual is Button)
-            {
-                return;
-            }
-        }
-
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            BeginMoveDrag(e);
-        }
-    }
-
-    private void OnTitleBarDoubleTapped(object? sender, TappedEventArgs e) => ToggleMaximized();
-
-    private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-
-    private void OnMaximizeClick(object? sender, RoutedEventArgs e) => ToggleMaximized();
-
-    private void OnCloseWindowClick(object? sender, RoutedEventArgs e) => Close();
-
-    private void ToggleMaximized() => WindowState = WindowState == WindowState.Maximized
-        ? WindowState.Normal
-        : WindowState.Maximized;
-
-    private async Task GoBackAsync()
-    {
-        try
-        {
-            await _session.GoBackAsync();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async void OnSearchClick(object? sender, RoutedEventArgs e) => await RunSearchAsync();
-
-    private void OnSearchToggleClick(object? sender, RoutedEventArgs e)
-    {
-        if (SearchEditor.IsVisible)
-        {
-            CollapseSearchEditor();
-            if (_interfaceHidden) { SearchBox.Focus(); } else { SearchToggleButton.Focus(); }
-            return;
-        }
-
-        OpenSearchEditor();
-    }
-
-    private void OpenSearchEditor()
-    {
-        ConnectionPanel.IsVisible = false;
-        SettingsPanel.IsVisible = false;
-        AccessibleListPanel.IsVisible = false;
-        ContextFilterPanel.IsVisible = false;
-        HistoryPanel.IsVisible = false;
-        _detailsDismissed = true;
-        DetailsPanel.IsVisible = false;
-        SearchEditor.IsVisible = true;
-        AutomationProperties.SetName(SearchToggleButton, "Collapse Search");
-        UpdateWelcomeAndStatusVisibility();
-        SearchBox.Focus();
-        SearchBox.SelectAll();
-    }
-
-    private void CollapseSearchEditor()
-    {
-        SearchEditor.IsVisible = _interfaceHidden;
-        AutomationProperties.SetName(SearchToggleButton, "Open Search");
-        UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void CloseSearchEditor(bool clearSearch)
-    {
-        if (clearSearch)
-        {
-            ClearSearch();
-        }
-
-        CollapseSearchEditor();
-        if (_interfaceHidden) { SearchBox.Focus(); } else { SearchToggleButton.Focus(); }
-    }
-
     private async void OnSearchKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (e.Key == Key.Enter) { e.Handled = true; await RunCurrentSearchAsync(force: true); }
+        else if (e.Key == Key.Escape) { OnPinnedTabClick(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (e.Key == Key.Down)
         {
-            await RunSearchAsync();
+            if (SearchResultsList.ItemCount > 0)
+            {
+                SearchResultsList.SelectedIndex = 0;
+                SearchResultsList.ScrollIntoView(SearchResultsList.SelectedItem!);
+                (SearchResultsList.SelectedItem as ListBoxItem)?.Focus();
+            }
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape)
-        {
-            if (_voice.IsActive) { await _voice.CancelAsync(); }
-            else { CloseSearchEditor(clearSearch: true); }
-            e.Handled = true;
-        }
     }
-
-    private async Task RunSearchAsync()
+    private async void OnSearchSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (string.IsNullOrEmpty(_session.AccessRoot))
-        {
-            RestoreInterface();
-            CollapseSearchEditor();
-            WelcomeChooseFolderButton.Focus();
-            SetTransientStatus("Choose a folder before searching.");
-            return;
-        }
-
-        await _session.SearchAsync(SearchBox.Text ?? string.Empty);
+        if (!_syncing && SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit hit }) { await _session.PreviewSearchHitAsync(hit); }
     }
-
-    private async Task<VoiceActionResult> ExecuteVoiceIntentCoreAsync(
-        VoiceIntent intent,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        switch (intent.Kind)
-        {
-            case VoiceIntentKind.GoBack:
-                if (!_session.CanGoBack)
-                {
-                    return VoiceActionResult.Rejected("There is no previous graph focus.");
-                }
-
-                await _session.GoBackAsync(cancellationToken);
-                return VoiceActionResult.Completed("Moved back.");
-
-            case VoiceIntentKind.GoUp:
-                if (!await _session.GoUpAsync(cancellationToken))
-                {
-                    return VoiceActionResult.Rejected("The current focus has no authorized parent in this scope.");
-                }
-
-                return VoiceActionResult.Completed("Moved up one containment level.");
-
-            case VoiceIntentKind.GoRoot:
-                if (!await _session.GoRootAsync(cancellationToken))
-                {
-                    return VoiceActionResult.Rejected("The current focus is already at the authorized root.");
-                }
-
-                return VoiceActionResult.Completed("Moved to the authorized root.");
-
-            case VoiceIntentKind.ActivateSelectedNode:
-                var selectedNode = _session.SelectedNode;
-                if (selectedNode is null)
-                {
-                    return VoiceActionResult.Rejected("Select a visible node before opening it.");
-                }
-
-                return await ActivateNodeAsync(selectedNode.Id)
-                    ? VoiceActionResult.Completed($"Opened {selectedNode.Name}.")
-                    : VoiceActionResult.Rejected("The selected item could not be opened safely.");
-
-            case VoiceIntentKind.OpenVisibleNode:
-            case VoiceIntentKind.FocusVisibleNode:
-                return await ExecuteVisibleNodeVoiceIntentAsync(intent, cancellationToken);
-
-            case VoiceIntentKind.ZoomIn:
-                GraphScene.ZoomIn();
-                return VoiceActionResult.Completed("Zoomed in.");
-
-            case VoiceIntentKind.ZoomOut:
-                GraphScene.ZoomOut();
-                return VoiceActionResult.Completed("Zoomed out.");
-
-            case VoiceIntentKind.ResetView:
-                GraphScene.ResetView();
-                return VoiceActionResult.Completed("View reset.");
-
-            case VoiceIntentKind.SwitchToStructure:
-                await SwitchToStructureAsync();
-                return VoiceActionResult.Completed("Structure mode active.");
-
-            case VoiceIntentKind.SwitchToContext:
-            case VoiceIntentKind.ShowRelatedToFocus:
-                if (!_session.IsContextAvailable)
-                {
-                    return VoiceActionResult.Rejected("Context exploration requires a connected OmniSorSe session.");
-                }
-
-                await SwitchToContextAsync();
-                return VoiceActionResult.Completed("Context mode active.");
-
-            case VoiceIntentKind.UseDarkTheme:
-                SetThemeFromVoice("Dark");
-                return VoiceActionResult.Completed("Dark mode active.");
-
-            case VoiceIntentKind.UseLightTheme:
-                SetThemeFromVoice("Light");
-                return VoiceActionResult.Completed("Light mode active.");
-
-            case VoiceIntentKind.OpenDetails:
-                if (_session.SelectedNode is null)
-                {
-                    return VoiceActionResult.Rejected("Select a visible node before opening details.");
-                }
-
-                RestoreInterface();
-                _detailsDismissed = false;
-                UpdateView();
-                DetailsPanel.Focus();
-                return VoiceActionResult.Completed("Details opened.");
-
-            case VoiceIntentKind.CloseDetails:
-                _detailsDismissed = true;
-                DetailsPanel.IsVisible = false;
-                GraphScene.Focus();
-                return VoiceActionResult.Completed("Details closed.");
-
-            case VoiceIntentKind.ShowAccessibleList:
-                ShowAccessibleList();
-                return VoiceActionResult.Completed("Accessible list opened.");
-
-            case VoiceIntentKind.HideAccessibleList:
-                HideAccessibleList();
-                return VoiceActionResult.Completed("Accessible list closed.");
-
-            case VoiceIntentKind.ClearSearch:
-                ClearSearch();
-                return VoiceActionResult.Completed("Search cleared.");
-
-            case VoiceIntentKind.Cancel:
-                _session.CancelOperations();
-                return VoiceActionResult.Completed("Current operation cancelled.");
-
-            case VoiceIntentKind.Search:
-            default:
-                return await ExecuteVoiceSearchAsync(intent.Argument, cancellationToken);
-        }
-    }
-
-    private async Task<VoiceActionResult> ExecuteVisibleNodeVoiceIntentAsync(
-        VoiceIntent intent,
-        CancellationToken cancellationToken)
-    {
-        var argument = intent.Argument?.Trim() ?? string.Empty;
-        if (argument.Length == 0)
-        {
-            return VoiceActionResult.Rejected("No visible node name was recognized.");
-        }
-
-        var normalizedArgument = VoiceCommandParser.NormalizeForComparison(argument);
-        var matches = _session.Neighborhood?.Nodes
-            .Where(node => VoiceCommandParser.NormalizeForComparison(node.Name) == normalizedArgument)
-            .ToArray() ?? [];
-        if (matches.Length != 1)
-        {
-            return await ExecuteVoiceSearchAsync(argument, cancellationToken);
-        }
-
-        var node = matches[0];
-        _detailsDismissed = false;
-        _session.SelectNode(node.Id);
-        if (intent.Kind == VoiceIntentKind.OpenVisibleNode)
-        {
-            return await ActivateNodeAsync(node.Id)
-                ? VoiceActionResult.Completed($"Opened {node.Name}.")
-                : VoiceActionResult.Rejected($"{node.Name} could not be opened safely.");
-        }
-
-        return VoiceActionResult.Completed($"Focused {node.Name}.");
-    }
-
-    private async Task<VoiceActionResult> ExecuteVoiceSearchAsync(
-        string? query,
-        CancellationToken cancellationToken)
-    {
-        query = query?.Trim();
-        if (string.IsNullOrEmpty(query))
-        {
-            return VoiceActionResult.Rejected("No Search query was recognized.");
-        }
-
-        if (string.IsNullOrEmpty(_session.AccessRoot))
-        {
-            return VoiceActionResult.Rejected("Choose a standalone root or connect to OmniSorSe before searching.");
-        }
-
-        SearchBox.Text = query;
-        OpenSearchEditor();
-        await _session.SearchAsync(query, cancellationToken);
-        return VoiceActionResult.Completed(
-            _session.ProviderMode == ExplorerProviderMode.Connected
-                ? "OmniSorSe Search results are ready."
-                : "Standalone structural Search results are ready.");
-    }
-
-    private void SetThemeFromVoice(string theme)
-    {
-        ThemePicker.SelectedIndex = theme == "Light" ? 1 : 0;
-    }
-
-    private async Task OpenRootAsync(string path)
-    {
-        var generation = _session.ProviderGeneration;
-        var operation = _session.OperationGeneration;
-        try
-        {
-            var provider = new FileSystemExplorerProvider(path);
-            var opening = _session.OpenRootAsync(provider, provider);
-            generation = _session.ProviderGeneration;
-            operation = _session.OperationGeneration;
-            await opening;
-            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { GraphScene.ResetView(); }
-        }
-        catch (OperationCanceledException)
-        {
-            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { SetTransientStatus("Folder loading cancelled."); }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            if (!_isDisposed && generation == _session.ProviderGeneration && operation == _session.OperationGeneration) { SetTransientStatus($"The selected folder could not be opened: {exception.Message}"); }
-        }
-    }
-
-    private async void OnSearchResultDoubleTapped(object? sender, TappedEventArgs e) =>
-        await FocusSelectedSearchResultAsync();
-
+    private async void OnSearchDoubleTapped(object? sender, TappedEventArgs e) => await ActivateSelectedSearchAsync();
     private async void OnSearchResultsKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
-        {
-            await FocusSelectedSearchResultAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            ClearSearch();
-            GraphScene.Focus();
-            e.Handled = true;
-        }
+        if (e.Key == Key.Enter) { e.Handled = true; await ActivateSelectedSearchAsync(); }
+        else if (e.Key == Key.Escape) { OnPinnedTabClick(this, new RoutedEventArgs()); e.Handled = true; }
     }
-
-    private async void OnFocusSearchResultClick(object? sender, RoutedEventArgs e) =>
-        await FocusSelectedSearchResultAsync();
-
-    private async Task FocusSelectedSearchResultAsync()
+    private async Task ActivateSelectedSearchAsync()
     {
-        if (SearchResultsList.SelectedItem is not ExplorerSearchHit hit)
-        {
-            SetTransientStatus("Select a search result first.");
-            return;
-        }
-
-        try
-        {
-            await _session.FocusSearchHitAsync(hit);
-        }
-        catch (OperationCanceledException)
-        {
-        }
+        if (SearchResultsList.SelectedItem is ListBoxItem { Tag: FileMapSearchHit hit }) { GraphScene.Focus(); await _session.ActivateSearchHitAsync(hit); }
     }
-
-    private void OnThemeChanged(object? sender, SelectionChangedEventArgs e)
+    private async void OnMinimalSearchKeyDown(object? sender, KeyEventArgs e)
     {
-        var selectedIndex = sender is ComboBox picker ? picker.SelectedIndex : 0;
-        var theme = selectedIndex == 1 ? "Light" : "Dark";
-        if (Application.Current is not null)
-        {
-            Application.Current.RequestedThemeVariant = selectedIndex == 1
-                ? ThemeVariant.Light
-                : ThemeVariant.Dark;
-        }
-
-        if (!_isApplyingPreferences)
-        {
-            _preferences = _preferences with { Theme = theme };
-            _preferencesStore.Save(_preferences);
-        }
-
-        GraphScene?.InvalidateVisual();
+        if (e.Key != Key.Enter) { return; }
+        e.Handled = true;
+        ShowSearch();
+        await RunCurrentSearchAsync(force: true);
     }
-
-    private void OnVisualPreferenceChanged(object? sender, RoutedEventArgs e)
-    {
-        if (_isApplyingPreferences)
-        {
-            return;
-        }
-
-        _preferences = _preferences with
-        {
-            ReducedMotion = ReducedMotionToggle.IsChecked == true,
-            ReducedEffects = ReducedEffectsToggle.IsChecked == true,
-            DiagnosticsVisible = DiagnosticsToggle.IsChecked == true,
-        };
-        _preferencesStore.Save(_preferences);
-        ApplyVisualPreferences();
-        UpdateView();
-    }
-
-    private void OnSettingsClick(object? sender, RoutedEventArgs e)
-    {
-        var showSettings = !SettingsPanel.IsVisible;
-        SettingsPanel.IsVisible = showSettings;
-        if (showSettings)
-        {
-            CollapseSearchEditor();
-            ConnectionPanel.IsVisible = false;
-            AccessibleListPanel.IsVisible = false;
-            ContextFilterPanel.IsVisible = false;
-            SearchResultsPanel.IsVisible = false;
-            _detailsDismissed = true;
-            DetailsPanel.IsVisible = false;
-        }
-
-        UpdateView();
-        (showSettings ? ReducedMotionToggle : SettingsButton).Focus();
-    }
-
-    private async void OnCopyDiagnosticsClick(object? sender, RoutedEventArgs e)
-    {
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-        if (clipboard is null)
-        {
-            DiagnosticsCopyStatus.Text = "Clipboard unavailable.";
-            return;
-        }
-
-        try
-        {
-            await clipboard.SetTextAsync(CreateSanitizedDiagnosticsReport());
-            DiagnosticsCopyStatus.Text = "Safe diagnostics copied. Review before sharing.";
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or NotSupportedException or COMException)
-        {
-            DiagnosticsCopyStatus.Text = "Could not access the clipboard.";
-        }
-    }
-
-    private void OnCloseDetailsClick(object? sender, RoutedEventArgs e)
-    {
-        _detailsDismissed = true;
-        DetailsPanel.IsVisible = false;
-        UpdateResponsiveShellVisibility();
-        GraphScene.Focus();
-    }
-
-    private void OnCloseSearchClick(object? sender, RoutedEventArgs e)
-    {
-        CloseSearchEditor(clearSearch: true);
-    }
-
-    private void OnZoomInClick(object? sender, RoutedEventArgs e) => GraphScene.ZoomIn();
-
-    private void OnZoomOutClick(object? sender, RoutedEventArgs e) => GraphScene.ZoomOut();
-
-    private void OnResetViewClick(object? sender, RoutedEventArgs e) => GraphScene.ResetView();
-
-    private void OnCancelClick(object? sender, RoutedEventArgs e) => _session.CancelOperations();
-
-    private void OnAccessibleListClick(object? sender, RoutedEventArgs e)
-    {
-        RestoreInterface();
-        if (AccessibleListPanel.IsVisible)
-        {
-            HideAccessibleList();
-            return;
-        }
-
-        ShowAccessibleList();
-    }
-
-    private void ShowAccessibleList()
-    {
-        RestoreInterface();
-        CollapseSearchEditor();
-        AccessibleListPanel.IsVisible = true;
-        ConnectionPanel.IsVisible = false;
-        SettingsPanel.IsVisible = false;
-        SearchResultsPanel.IsVisible = false;
-        ContextFilterPanel.IsVisible = false;
-        SynchronizeAccessibleList();
-        UpdateWelcomeAndStatusVisibility();
-        AccessibleNodesList.Focus();
-    }
-
-    private void HideAccessibleList()
-    {
-        AccessibleListPanel.IsVisible = false;
-        GraphScene.Focus();
-        UpdateView();
-    }
-
-    private async void OnVoicePreferenceChanged(object? sender, RoutedEventArgs e)
-    {
-        if (_isApplyingPreferences)
-        {
-            return;
-        }
-
-        SaveVoicePreferences();
-        if (!_preferences.VoiceEnabled)
-        {
-            _voice.Disable();
-            UpdateVoiceView();
-            return;
-        }
-
-        await RefreshVoiceCapabilityAsync();
-    }
-
-    private async void OnVoiceLanguageChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_isApplyingPreferences)
-        {
-            return;
-        }
-
-        SaveVoicePreferences();
-        if (_preferences.VoiceEnabled && !_voice.IsActive)
-        {
-            await RefreshVoiceCapabilityAsync();
-        }
-    }
-
-    private void SaveVoicePreferences()
-    {
-        _preferences = (_preferences with
-        {
-            VoiceEnabled = VoiceEnabledToggle.IsChecked == true,
-            VoiceLanguage = VoiceLanguagePicker.SelectedIndex == 1 ? "auto" : "en",
-        }).Normalize();
-        _preferencesStore.Save(_preferences);
-    }
-
-    private async Task RefreshVoiceCapabilityAsync()
-    {
-        try
-        {
-            await _voice.RefreshCapabilityAsync(_preferences.ToVoiceOptions());
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async void OnVoiceButtonClick(object? sender, RoutedEventArgs e) =>
-        await ToggleVoiceAsync();
-
-    private async Task ToggleVoiceAsync()
-    {
-        RestoreInterface();
-        if (!_preferences.VoiceEnabled)
-        {
-            _preferences = (_preferences with { VoiceEnabled = true }).Normalize();
-            _preferencesStore.Save(_preferences);
-            // This click owns startup. Do not also start a capability refresh from the
-            // preference event, which would make this same click cancel Loading.
-            _isApplyingPreferences = true;
-            try
-            {
-                VoiceEnabledToggle.IsChecked = true;
-            }
-            finally
-            {
-                _isApplyingPreferences = false;
-            }
-        }
-
-        try
-        {
-            if (_voice.State == VoiceCapabilityState.Listening)
-            {
-                await _voice.StopAsync(_preferences.ToVoiceOptions());
-            }
-            else if (_voice.IsActive)
-            {
-                await _voice.CancelAsync();
-            }
-            else
-            {
-                await _voice.StartAsync(_preferences.ToVoiceOptions());
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async void OnVoiceCancelClick(object? sender, RoutedEventArgs e) =>
-        await _voice.CancelAsync();
-
-    private void OnVoiceStateChanged(object? sender, EventArgs e)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            UpdateVoiceView();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(UpdateVoiceView);
-        }
-    }
-
-    private void UpdateVoiceView()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        VoiceHud.IsVisible = !_interfaceHidden || _voice.IsActive;
-        VoiceStateText.Text = _voice.Status;
-        VoiceLevelIndicator.Value = _voice.InputLevel;
-        VoiceTranscriptText.Text = string.IsNullOrWhiteSpace(_voice.TranscriptPreview)
-            ? string.Empty
-            : $"“{_voice.TranscriptPreview}”";
-        VoiceTranscriptText.IsVisible = VoiceTranscriptText.Text.Length > 0;
-        var showVoiceDetails = _voice.State != VoiceCapabilityState.Disabled || VoiceTranscriptText.IsVisible;
-        VoiceListeningRing.IsVisible = showVoiceDetails;
-        VoiceLevelIndicator.IsVisible = showVoiceDetails;
-        VoiceStatusStack.IsVisible = showVoiceDetails;
-        if (VoiceTranscriptText.IsVisible)
-        {
-            _voiceTranscriptTimer.Start();
-        }
-        else
-        {
-            _voiceTranscriptTimer.Stop();
-        }
-        VoiceCancelButton.IsVisible = _voice.IsActive;
-        VoiceMicrophoneIcon.IsVisible = !_voice.IsActive;
-        VoiceStopIcon.IsVisible = _voice.IsActive;
-        ToolTip.SetTip(VoiceButton, _voice.State == VoiceCapabilityState.Listening
-            ? "Stop and transcribe · Ctrl+Shift+Space"
-            : _voice.IsActive ? "Cancel voice · Escape" : "Listen · Ctrl+Shift+Space");
-        var stateName = _voice.State.ToString();
-        AutomationProperties.SetName(VoiceButton, $"Toggle local listening. Voice state: {stateName}");
-        AutomationProperties.SetHelpText(
-            VoiceButton,
-            "Press once to listen, then press Stop or pause for two seconds after speaking to transcribe locally. Escape cancels. Keyboard shortcut Control Shift Space.");
-        AutomationProperties.SetName(VoiceHud, $"Voice input. {_voice.Status}");
-
-        var shouldAnimate = _voice.State == VoiceCapabilityState.Listening &&
-            !_preferences.ReducedMotion &&
-            !_preferences.ReducedEffects;
-        if (shouldAnimate)
-        {
-            _voiceVisualTimer.Start();
-        }
-        else
-        {
-            _voiceVisualTimer.Stop();
-            VoiceListeningRing.Opacity = _voice.State == VoiceCapabilityState.Listening ? 1 : 0.55;
-        }
-    }
-
-    private void UpdateVoiceListeningVisual()
-    {
-        if (_voice.State != VoiceCapabilityState.Listening ||
-            _preferences.ReducedMotion ||
-            _preferences.ReducedEffects)
-        {
-            _voiceVisualTimer.Stop();
-            VoiceListeningRing.Opacity = _voice.State == VoiceCapabilityState.Listening ? 1 : 0.55;
-            return;
-        }
-
-        _voicePulseHigh = !_voicePulseHigh;
-        VoiceListeningRing.Opacity = _voicePulseHigh ? 1 : 0.55;
-    }
-
-    private void OnContextFilterClick(object? sender, RoutedEventArgs e)
-    {
-        RestoreInterface();
-        if (!IsContextualMode(_session.ViewMode))
-        {
-            return;
-        }
-
-        ContextFilterPanel.IsVisible = !ContextFilterPanel.IsVisible;
-        if (ContextFilterPanel.IsVisible)
-        {
-            CollapseSearchEditor();
-            ConnectionPanel.IsVisible = false;
-            SettingsPanel.IsVisible = false;
-            AccessibleListPanel.IsVisible = false;
-            SearchResultsPanel.IsVisible = false;
-            _detailsDismissed = true;
-            DetailsPanel.IsVisible = false;
-            ApplyContextFilterToControls();
-            ContextKindFilter.Focus();
-        }
-        else
-        {
-            ContextFilterButton.Focus();
-            UpdateView();
-        }
-
-        UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void OnContextFilterChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_isApplyingContextFilters || !IsContextualMode(_session.ViewMode))
-        {
-            return;
-        }
-
-        _session.ApplyContextFilter(new ContextFilter(
-            KindFromIndex(ContextKindFilter.SelectedIndex),
-            StrengthFromIndex(ContextStrengthFilter.SelectedIndex),
-            EvidenceFromIndex(ContextEvidenceFilter.SelectedIndex)));
-    }
-
-    private void OnClearContextFiltersClick(object? sender, RoutedEventArgs e)
-    {
-        _session.ClearContextFilter();
-        ApplyContextFilterToControls();
-    }
-
-    private void OnAccessibleNodeSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_isSynchronizingAccessibleList || AccessibleNodesList.SelectedItem is not AccessibleNodeItem item)
-        {
-            return;
-        }
-
-        _detailsDismissed = false;
-        _session.SelectNode(item.NodeId);
-    }
-
-    private async void OnAccessibleNodeDoubleTapped(object? sender, TappedEventArgs e) =>
-        await ActivateSelectedAccessibleNodeAsync();
-
-    private async void OnOpenAccessibleNodeClick(object? sender, RoutedEventArgs e) =>
-        await ActivateSelectedAccessibleNodeAsync();
-
-    private async void OnAccessibleNodesKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            await ActivateSelectedAccessibleNodeAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Back)
-        {
-            await GoBackAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            AccessibleListPanel.IsVisible = false;
-            UpdateWelcomeAndStatusVisibility();
-            GraphScene.Focus();
-            e.Handled = true;
-        }
-    }
-
-    private async Task ActivateSelectedAccessibleNodeAsync()
-    {
-        if (AccessibleNodesList.SelectedItem is not AccessibleNodeItem item)
-        {
-            SetTransientStatus("Select a structural item first.");
-            return;
-        }
-
-        await ActivateNodeAsync(item.NodeId);
-    }
-
-    private void OnGraphNodeSelected(object? sender, string nodeId)
-    {
-        _detailsDismissed = false;
-        SettingsPanel.IsVisible = false;
-        _session.SelectNode(nodeId);
-    }
-
-    private async void OnGraphNodeActivated(object? sender, string nodeId)
-    {
-        await ActivateNodeAsync(nodeId);
-    }
-
-    private async Task<bool> ActivateNodeAsync(string nodeId)
-    {
-        var node = _session.Neighborhood?.Nodes.FirstOrDefault(item =>
-            ExplorerIdentity.Equals(item.Id, nodeId));
-        if (node is null)
-        {
-            return false;
-        }
-
-        if (node.Kind == ExplorerNodeKind.Aggregate)
-        {
-            if (!_session.ActivateAggregate(node.Id))
-            {
-                SetTransientStatus("This aggregate is informational because the source enumeration was bounded.");
-            }
-
-            return true;
-        }
-
-        if (IsContextualMode(_session.ViewMode) &&
-            !ExplorerIdentity.Equals(node.Id, _session.Neighborhood?.FocusNodeId))
-        {
-            try
-            {
-                if (_session.ViewMode == ExplorerViewMode.Hybrid)
-                {
-                    await _session.FocusHybridNodeAsync(node.Target);
-                }
-                else
-                {
-                    await _session.FocusContextNodeAsync(node.Target);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-
-            return true;
-        }
-
-        if (node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Context && node.IsNavigable)
-        {
-            try
-            {
-                var opened = await _session.NavigateAsync(node.Target);
-                return opened;
-            }
-            catch (OperationCanceledException)
-            {
-                return false;
-            }
-        }
-
-        if (node.Kind == ExplorerNodeKind.File)
-        {
-            if (_session.ProviderMode != ExplorerProviderMode.Standalone)
-            {
-                SetTransientStatus("Connected file opening is unavailable because projected paths are not filesystem authority.");
-                return false;
-            }
-
-            var result = await _fileActivation.OpenAsync(_session.AccessRoot, node.Path);
-            SetTransientStatus(result switch
-            {
-                FileActivationResult.Opened => $"Opened {node.Name} with its Windows app.",
-                FileActivationResult.HighRiskTypeBlocked => "Executable and script-like files are not launched from the spatial graph.",
-                FileActivationResult.ReparsePointBlocked => "This reparse-point file was not launched.",
-                FileActivationResult.NotFound => "The selected file is no longer available.",
-                FileActivationResult.OutsideAccessRoot => "The selected file is outside the authorized root.",
-                _ => "Windows could not open the selected file safely.",
-            });
-            if (result == FileActivationResult.Opened)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.P && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
-        {
-            RestoreInterface();
-            OnPinCurrentFolderClick(PinCurrentFolderButton, new RoutedEventArgs());
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.H && e.KeyModifiers == KeyModifiers.Control)
-        {
-            OnInterfaceToggleClick(InterfaceToggleButton, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Space &&
-            e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            _ = ToggleVoiceAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.F &&
-            e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            if (IsContextualMode(_session.ViewMode))
-            {
-                OnContextFilterClick(ContextFilterButton, new RoutedEventArgs());
-            }
-
-            e.Handled = true;
-        }
-        else if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OpenSearchEditor();
-            e.Handled = true;
-        }
-        else if ((e.Key == Key.Left && e.KeyModifiers.HasFlag(KeyModifiers.Alt)) || e.Key == Key.BrowserBack)
-        {
-            _ = GoBackAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Up && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-        {
-            _ = GoUpAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Home && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-        {
-            _ = GoRootAsync();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.I && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            if (_session.SelectedNode is not null)
-            {
-                RestoreInterface();
-                _detailsDismissed = false;
-                UpdateView();
-                DetailsPanel.Focus();
-            }
-
-            e.Handled = true;
-        }
-        else if (e.Key == Key.L &&
-                 e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
-                 e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-        {
-            OnAccessibleListClick(AccessibleListButton, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.D1 && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnStructureModeClick(StructureModeButton, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.D2 && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnContextModeClick(ContextModeButton, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.D3 && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnHybridModeClick(HybridModeButton, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            if (_voice.IsActive)
-            {
-                _ = _voice.CancelAsync();
-            }
-            else
-            {
-                DismissTransientSurfaces();
-            }
-
-            e.Handled = true;
-        }
-    }
-
-    private void OnSessionStateChanged(object? sender, EventArgs e) => UpdateView();
-
-    private void OnConnectionStateChanged(object? sender, EventArgs e) =>
-        Dispatcher.UIThread.Post(UpdateConnectionView);
-
-    private void OnProviderFailed(Exception exception) => Dispatcher.UIThread.Post(() =>
-    {
-        if (_session.ProviderMode == ExplorerProviderMode.Connected)
-        {
-            _connection.ReportDisconnected(exception);
-        }
-
-        UpdateConnectionView();
-    });
-
-    private void UpdateView()
-    {
-        var neighborhood = _session.Neighborhood;
-        var selected = _session.SelectedNode;
-        var currentPath = string.IsNullOrEmpty(_session.CurrentPath)
-            ? "No folder selected"
-            : _session.CurrentPath;
-        CurrentPathText.Text = neighborhood?.Focus.Name ?? currentPath;
-        ToolTip.SetTip(CurrentPathText, currentPath);
-        AutomationProperties.SetName(FocusHud, $"Current focus: {CurrentPathText.Text}");
-        AutomationProperties.SetHelpText(FocusHud, currentPath);
-        StatusText.Text = _session.Status;
-        AnnounceStatus(_session.Status);
-        ViewModeStatusText.Text = _session.ViewMode.ToString().ToUpperInvariant();
-        Title = $"OmniBrille — {_session.ViewMode}";
-        _isApplyingPreferences = true;
-        try
-        {
-            StructureModeButton.IsChecked = _session.ViewMode == ExplorerViewMode.Structure;
-            ContextModeButton.IsChecked = _session.ViewMode == ExplorerViewMode.Context;
-            HybridModeButton.IsChecked = _session.ViewMode == ExplorerViewMode.Hybrid;
-        }
-        finally
-        {
-            _isApplyingPreferences = false;
-        }
-
-        var connectedSearch = _session.ProviderMode == ExplorerProviderMode.Connected;
-        SearchBox.PlaceholderText = connectedSearch
-            ? "Search authorized indexed scope"
-            : "Search selected root";
-        AutomationProperties.SetName(
-            SearchBox,
-            connectedSearch
-                ? $"{_session.ViewMode} Search through OmniSorSe"
-                : _session.ViewMode switch
-                {
-                    ExplorerViewMode.Context => "Context search",
-                    ExplorerViewMode.Hybrid => "Hybrid search",
-                    _ => "Structural search",
-                });
-        AutomationProperties.SetHelpText(
-            SearchBox,
-            connectedSearch
-                ? "Searches the current authorized OmniSorSe session scope. Press Escape to clear."
-                : "Searches only names and paths inside the selected root. Press Escape to clear.");
-        AutomationProperties.SetName(
-            SearchButton,
-            connectedSearch ? "Run OmniSorSe Search" : "Run Standalone Search");
-        AutomationProperties.SetName(
-            SearchResultsList,
-            connectedSearch ? "OmniSorSe Search results" : "Standalone Search results");
-        AutomationProperties.SetName(
-            GraphScene,
-            $"Spatial {_session.ViewMode} graph");
-        AutomationProperties.SetName(
-            AccessibleNodesList,
-            $"Visible {_session.ViewMode} graph nodes");
-        AutomationProperties.SetName(
-            AccessibleOpenButton,
-            IsContextualMode(_session.ViewMode) ? "Focus selected graph node" : "Open selected structural node");
-        BackButton.IsEnabled = _session.CanGoBack && !_session.IsLoading;
-        UpButton.IsEnabled = _session.CanGoUp && !_session.IsLoading;
-        ChooseFolderButton.IsEnabled = _session.CanGoRoot && !_session.IsLoading;
-        HistoryButton.IsEnabled = _session.NavigationTrail.Count > 0;
-        HistoryButton.Content = $"TRAIL {_session.NavigationHistoryCount}";
-        UpdateHistoryView();
-        ContextFilterButton.IsVisible = IsContextualMode(_session.ViewMode);
-        if (!IsContextualMode(_session.ViewMode))
-        {
-            ContextFilterPanel.IsVisible = false;
-        }
-        ContextFilterButton.Content = _session.ContextFilter.IsActive ? "Filter · active" : "Filter";
-        AutomationProperties.SetName(
-            ContextFilterButton,
-            _session.ContextFilter.IsActive ? "Open Context filters, filters active" : "Open Context filters");
-        ApplyContextFilterToControls();
-
-        var initialLoading = _session.IsLoading && neighborhood is null;
-        InitialLoadingOverlay.IsVisible = initialLoading;
-        InitialLoadingText.Text = _session.Status;
-        DataRain.SetActive(initialLoading);
-        ProgressHud.IsVisible = (neighborhood is not null && _session.IsLoading) || _session.IsSearching;
-        ProgressText.Text = _session.IsSearching
-            ? _session.ProviderMode == ExplorerProviderMode.Connected
-                ? "Searching OmniSorSe…"
-                : "Searching selected root…"
-            : _session.ViewMode == ExplorerViewMode.Context
-                ? "Reading authoritative Context…"
-            : _session.ViewMode == ExplorerViewMode.Hybrid
-                ? "Composing bounded Structure and Context…"
-            : _session.LoadState == ExplorerLoadState.PartiallyLoaded
-                ? $"Graph interactive · {_session.LoadedItemCount:N0} items streamed"
-                : _session.ProviderMode == ExplorerProviderMode.Connected
-                    ? "Reading indexed structure…"
-                    : "Reading structural items…";
-
-        var results = _session.SearchResult;
-        var showSearchResults = results is not null &&
-            _session.SearchQuery.Length > 0 &&
-            !AccessibleListPanel.IsVisible &&
-            !ContextFilterPanel.IsVisible &&
-            !SettingsPanel.IsVisible &&
-            !ConnectionPanel.IsVisible;
-        DetailsPanel.IsVisible = !_interfaceHidden && selected is not null &&
-            !_detailsDismissed &&
-            !SettingsPanel.IsVisible &&
-            !ConnectionPanel.IsVisible &&
-            !ContextFilterPanel.IsVisible &&
-            !showSearchResults;
-        if (selected is not null)
-        {
-            UpdateDetails(selected, neighborhood);
-        }
-        else
-        {
-            _detailsTypingTimer.Stop();
-            _detailsTypingFields = [];
-            _lastDetailsNodeId = null;
-        }
-
-        SearchResultsList.ItemsSource = results?.Hits;
-        SearchResultsPanel.IsVisible = showSearchResults;
-        if (showSearchResults)
-        {
-            SearchEditor.IsVisible = true;
-            AutomationProperties.SetName(SearchToggleButton, "Collapse Search");
-        }
-        var hasSearchMatches = results is { Hits.Count: > 0 };
-        SearchResultsList.IsVisible = hasSearchMatches;
-        SearchEmptyState.IsVisible = results is not null && !hasSearchMatches;
-        FocusSearchResultButton.IsEnabled = hasSearchMatches;
-        SearchSummaryText.Text = results is null
-            ? "Search results"
-            : $"{results.Hits.Count:N0} MATCHES{(results.WasTruncated ? " · BOUNDED" : string.Empty)}";
-        var emptyStructure = _session.ViewMode == ExplorerViewMode.Structure &&
-            neighborhood is not null &&
-            !_session.IsLoading &&
-            neighborhood.TotalChildCount == 0 &&
-            string.IsNullOrWhiteSpace(neighborhood.Warning);
-        StructureEmptyPanel.IsVisible = !_interfaceHidden && emptyStructure && !showSearchResults;
-        StructureEmptyChooseButton.IsVisible = _session.ProviderMode == ExplorerProviderMode.Standalone;
-        StructureEmptyProviderButton.IsVisible = _session.ProviderMode == ExplorerProviderMode.Connected;
-        StructureEmptyBackButton.IsEnabled = _session.CanGoBack && !_session.IsLoading;
-        StructureEmptyText.Text = _session.ProviderMode == ExplorerProviderMode.Connected
-            ? "This authorized indexed folder contains no visible items. Go Back or choose another authorized root."
-            : "This folder contains no visible items. Choose another folder or go Back.";
-        var emptyContext = IsContextualMode(_session.ViewMode) &&
-            !_session.IsLoading &&
-            _session.ContextFilterSummary?.MatchingRelationshipCount == 0;
-        ContextEmptyPanel.IsVisible = !_interfaceHidden && emptyContext && !ContextFilterPanel.IsVisible;
-        ContextEmptyClearButton.IsVisible = _session.ContextFilter.IsActive;
-        ContextEmptyText.Text = _session.ContextFilter.IsActive
-            ? "No relationships match these filters. Clear them to restore the authorized Context neighborhood."
-            : _session.ViewMode == ExplorerViewMode.Hybrid
-                ? "No contextual relationships found for this item. Structural orientation remains available; OmniBrille does not invent nearby relationships."
-                : "No contextual relationships found for this item. OmniBrille does not invent nearby relationships.";
-
-        GraphScene.ReducedMotion = _preferences.ReducedMotion;
-        GraphScene.ReducedEffects = _preferences.ReducedEffects;
-        GraphScene.TextScale = Math.Clamp(FontSize / 13d, 1, 2);
-        var graphSearchActive = results is not null && _session.SearchQuery.Length > 0;
-        GraphScene.SearchActive = graphSearchActive;
-        DataRain.ReducedMotion = _preferences.ReducedMotion;
-        DataRain.ReducedEffects = _preferences.ReducedEffects;
-        var neighborhoodChanged = !ReferenceEquals(neighborhood, _lastRenderedNeighborhood);
-        if (neighborhoodChanged)
-        {
-            GraphScene.SetScene(
-                neighborhood,
-                selected?.Id,
-                _session.HighlightedNodeIds,
-                animate: !_preferences.ReducedMotion);
-        }
-        else
-        {
-            GraphScene.SetInteractionState(selected?.Id, _session.HighlightedNodeIds, graphSearchActive);
-        }
-        _lastRenderedNeighborhood = neighborhood;
-        SynchronizeAccessibleList();
-        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
-        UpdateDiagnostics();
-        UpdateConnectionView();
-        UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void UpdateConnectionView()
-    {
-        ConnectionButton.Content = _connection.UserStatus;
-        AutomationProperties.SetName(ConnectionButton, $"Provider status: {_connection.UserStatus}");
-        ConnectionStatusText.Text = _connection.UserStatus;
-        var connected = _connection.State == OmniSorSeConnectionState.Connected;
-        ConnectedRootPicker.IsVisible = connected && _connection.AccessibleRoots.Count > 0;
-        OpenConnectedRootButton.IsVisible = connected && _connection.AccessibleRoots.Count > 0;
-        ReconnectButton.IsVisible = _connection.State is
-            OmniSorSeConnectionState.Disconnected or
-            OmniSorSeConnectionState.Unavailable or
-            OmniSorSeConnectionState.Error or
-            OmniSorSeConnectionState.Incompatible;
-        ConnectionDescriptionText.Text = _connection.State switch
-        {
-            OmniSorSeConnectionState.Connected =>
-                $"Explorer Protocol {_connection.ProtocolInfo?.ProtocolMajor}.{_connection.ProtocolInfo?.ProtocolMinor} · {_connection.AccessibleRoots.Count:N0} authorized indexed root(s) · read-only.",
-            OmniSorSeConnectionState.Incompatible =>
-                "This version of OmniBrille is not compatible with the running OmniSorSe version. Standalone mode remains available.",
-            OmniSorSeConnectionState.Disconnected =>
-                "The previous graph is retained as stale context. Retry while the short-lived session is still valid, or switch to standalone.",
-            OmniSorSeConnectionState.Unavailable when
-                string.Equals(_connection.Diagnostics.LastFailureCategory, "Session expired", StringComparison.Ordinal) =>
-                "The 15-minute OmniSorSe session expired. The previous graph is stale; launch OmniBrille from OmniSorSe again for a fresh grant, or use standalone.",
-            OmniSorSeConnectionState.Standalone =>
-                "Choose a folder for explicit standalone access. Connected mode begins only from an authorized OmniSorSe launch handoff.",
-            _ =>
-                "A compatible OmniSorSe release can launch OmniBrille through a one-time authorized local handoff; standalone remains available after any failure.",
-        };
-    }
-
-    private void UpdateDetails(ExplorerNode selected, ExplorerNeighborhood? neighborhood)
-    {
-        var connectedDetails = _session.SelectedNodeDetails;
-        DetailsNameText.Text = selected.Name;
-        DetailsTypeText.Text = selected.Kind switch
-        {
-            ExplorerNodeKind.Folder => "Folder",
-            ExplorerNodeKind.File => "File",
-            ExplorerNodeKind.Aggregate => selected.AggregateAction is null ? "Bounded aggregate" : "Refinable aggregate",
-            ExplorerNodeKind.Context => "Previous focus",
-            _ => selected.Kind.ToString(),
-        };
-        DetailsSizeText.Text = selected.Kind == ExplorerNodeKind.Aggregate
-            ? $"{selected.AggregatedItemCount:N0} items"
-            : selected.Id == neighborhood?.FocusNodeId
-                ? $"{neighborhood.TotalChildCount:N0} children"
-                : FormatSize(selected.SizeBytes);
-        DetailsModifiedText.Text = (connectedDetails?.ModifiedAt ?? selected.LastModified)
-            ?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "—";
-        DetailsAccessText.Text = selected.IsNavigable
-            ? _session.ViewMode == ExplorerViewMode.Hybrid
-                ? $"Navigable · {DescribeRoles(selected)}"
-                : "Navigable"
-            : selected.Kind == ExplorerNodeKind.File
-                ? "Read-only metadata"
-                : "Bounded / informational";
-        DetailsPathText.Text = selected.Path;
-        DetailsHintText.Text = selected.Kind == ExplorerNodeKind.Aggregate
-            ? selected.AggregateAction?.Description ?? "Enumeration was bounded before this aggregate could be refined."
-            : _session.ProviderMode == ExplorerProviderMode.Connected
-                ? _session.ViewMode == ExplorerViewMode.Hybrid
-                    ? "Read-only indexed data. Solid edges show Structure; dashed edges show OmniSorSe-authored Context."
-                    : "Read-only indexed data supplied by OmniSorSe Explorer Protocol v1."
-                : "Click a folder to enter; right-click the graph to go back. Click a file to inspect; double-click to open it with Windows. Reparse points and executable/script-like files are never launched.";
-        DetailsIndexText.Text = connectedDetails is null
-            ? _session.ProviderMode == ExplorerProviderMode.Connected ? "Loading…" : "Not applicable"
-            : connectedDetails.IsFullyIndexed ? "Complete" : "Incomplete";
-        DetailsSummaryText.Text = connectedDetails?.Summary ?? string.Empty;
-        var relationship = _session.SelectedRelationship;
-        RelationshipDetailsSection.IsVisible = relationship is not null;
-        AutomationProperties.SetHelpText(RelationshipDetailsSection, null);
-        AutomationProperties.SetHelpText(DetailsPanel, null);
-        AutomationProperties.SetName(DetailsRelationshipText, "Relationship reason");
-        AutomationProperties.SetName(DetailsRelationshipStrengthText, "Relationship ranking strength");
-        AutomationProperties.SetName(DetailsRelationshipEvidenceText, "Relationship evidence class");
-        AutomationProperties.SetName(DetailsProvenanceText, "Relationship provenance");
-        if (relationship is not null)
-        {
-            DetailsRelationshipText.Text = string.IsNullOrWhiteSpace(relationship.Reason)
-                ? $"{relationship.Kind} relationship; OmniSorSe supplied no additional reason."
-                : relationship.Reason;
-            DetailsRelationshipStrengthText.Text = $"{StrengthLabel(relationship.Strength)} · {relationship.Strength}/100";
-            DetailsRelationshipEvidenceText.Text = relationship.EvidenceClass.ToString();
-            DetailsProvenanceText.Text = string.IsNullOrWhiteSpace(relationship.Provenance)
-                ? "Not supplied"
-                : FriendlyProvenance(relationship.Provenance);
-            AutomationProperties.SetName(
-                DetailsRelationshipText,
-                $"Relationship reason: {DetailsRelationshipText.Text}");
-            AutomationProperties.SetName(
-                DetailsRelationshipStrengthText,
-                $"Relationship ranking strength: {DetailsRelationshipStrengthText.Text}");
-            AutomationProperties.SetName(
-                DetailsRelationshipEvidenceText,
-                $"Relationship evidence class: {DetailsRelationshipEvidenceText.Text}");
-            AutomationProperties.SetName(
-                DetailsProvenanceText,
-                $"Relationship provenance: {DetailsProvenanceText.Text}");
-            var accessibleRelationshipSummary =
-                $"Related because {DetailsRelationshipText.Text}. " +
-                $"Strength {DetailsRelationshipStrengthText.Text}. " +
-                $"Evidence {DetailsRelationshipEvidenceText.Text}. " +
-                $"Source {DetailsProvenanceText.Text}.";
-            AutomationProperties.SetHelpText(RelationshipDetailsSection, accessibleRelationshipSummary);
-            AutomationProperties.SetHelpText(DetailsPanel, accessibleRelationshipSummary);
-        }
-
-        StartDetailsTyping(selected.Id);
-    }
-
-    private void StartDetailsTyping(string nodeId)
-    {
-        (TextBlock Control, string Label)[] fields =
-        [
-            (DetailsTypeText, "Type"), (DetailsSizeText, "Size/items"),
-            (DetailsModifiedText, "Modified"), (DetailsAccessText, "Access"),
-            (DetailsPathText, "Path"), (DetailsHintText, "Action"),
-            (DetailsIndexText, "Index"), (DetailsSummaryText, "Summary"),
-            (DetailsRelationshipText, "Relationship reason"),
-            (DetailsRelationshipStrengthText, "Relationship ranking strength"),
-            (DetailsRelationshipEvidenceText, "Relationship evidence class"),
-            (DetailsProvenanceText, "Relationship provenance"),
-        ];
-        _detailsTypingFields = fields.Select(field => (field.Control, field.Control.Text ?? string.Empty)).ToArray();
-        foreach (var field in fields)
-        {
-            // UIA receives the complete value immediately; only its visual clip changes.
-            AutomationProperties.SetName(field.Control, $"{field.Label}: {field.Control.Text}");
-        }
-        var terminal = string.Join("\n", _detailsTypingFields.Select(field => field.Text));
-        if (ExplorerIdentity.Equals(_lastDetailsNodeId, nodeId) &&
-            string.Equals(_detailsTypingTarget, terminal, StringComparison.Ordinal))
-        {
-            ApplyDetailsTyping();
-            return;
-        }
-
-        _lastDetailsNodeId = nodeId;
-        _detailsTypingTarget = terminal;
-        _detailsTypingIndex = 0;
-        _detailsTypingTimer.Stop();
-        if (_preferences.ReducedMotion)
-        {
-            _detailsTypingIndex = int.MaxValue;
-            ApplyDetailsTyping();
-            return;
-        }
-
-        ApplyDetailsTyping();
-        _detailsTypingTimer.Start();
-    }
-
-    private void AdvanceDetailsTyping()
-    {
-        if (_preferences.ReducedMotion || _detailsTypingIndex >= _detailsTypingTarget.Length)
-        {
-            _detailsTypingIndex = int.MaxValue;
-            ApplyDetailsTyping();
-            _detailsTypingTimer.Stop();
-            return;
-        }
-
-        _detailsTypingIndex = Math.Min(_detailsTypingTarget.Length, _detailsTypingIndex + Math.Max(4, _detailsTypingTarget.Length / 60));
-        ApplyDetailsTyping();
-    }
-
-    private void ApplyDetailsTyping()
-    {
-        var remaining = _detailsTypingIndex;
-        foreach (var field in _detailsTypingFields)
-        {
-            var visible = Math.Min(field.Text.Length, remaining);
-            if (visible == field.Text.Length)
-            {
-                field.Control.Clip = null;
-            }
-            else if (visible == 0)
-            {
-                field.Control.Clip = new Avalonia.Media.RectangleGeometry(default);
-            }
-            else
-            {
-                var caret = field.Control.TextLayout.HitTestTextPosition(visible);
-                var clip = new Avalonia.Media.GeometryGroup();
-                clip.Children.Add(new Avalonia.Media.RectangleGeometry(new Rect(0, 0, field.Control.Bounds.Width, caret.Y)));
-                clip.Children.Add(new Avalonia.Media.RectangleGeometry(new Rect(0, caret.Y, caret.X, caret.Height)));
-                field.Control.Clip = clip;
-            }
-            remaining -= visible;
-        }
-    }
-
-    private void ApplyPreferencesToControls()
-    {
-        _isApplyingPreferences = true;
-        try
-        {
-            ThemePicker.SelectedIndex = _preferences.Theme == "Light" ? 1 : 0;
-            ReducedMotionToggle.IsChecked = _preferences.ReducedMotion;
-            ReducedEffectsToggle.IsChecked = _preferences.ReducedEffects;
-            DiagnosticsToggle.IsChecked = _preferences.DiagnosticsVisible;
-            VoiceEnabledToggle.IsChecked = _preferences.VoiceEnabled;
-            VoiceLanguagePicker.SelectedIndex = _preferences.VoiceLanguage == "auto" ? 1 : 0;
-        }
-        finally
-        {
-            _isApplyingPreferences = false;
-        }
-
-        ApplyVisualPreferences();
-    }
-
-    private void ApplyVisualPreferences()
-    {
-        if (Application.Current is not null)
-        {
-            Application.Current.RequestedThemeVariant = _preferences.Theme == "Light"
-                ? ThemeVariant.Light
-                : ThemeVariant.Dark;
-        }
-
-        GraphScene.ReducedMotion = _preferences.ReducedMotion;
-        GraphScene.ReducedEffects = _preferences.ReducedEffects;
-        DataRain.ReducedMotion = _preferences.ReducedMotion;
-        DataRain.ReducedEffects = _preferences.ReducedEffects;
-        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
-        if (_preferences.DiagnosticsVisible)
-        {
-            _diagnosticsTimer.Start();
-        }
-        else
-        {
-            _diagnosticsTimer.Stop();
-        }
-
-        if (_preferences.ReducedMotion && _detailsTypingTimer.IsEnabled)
-        {
-            _detailsTypingIndex = int.MaxValue;
-            ApplyDetailsTyping();
-            _detailsTypingTimer.Stop();
-        }
-        UpdateVoiceView();
-        GraphScene.InvalidateVisual();
-        DataRain.InvalidateVisual();
-    }
-
-    private void UpdateDiagnostics()
-    {
-        if (!_preferences.DiagnosticsVisible)
-        {
-            return;
-        }
-
-        var diagnostics = GraphScene.Diagnostics;
-        var rainDiagnostics = DataRain.Diagnostics;
-        var connectionDiagnostics = _connection.Diagnostics;
-        var voiceDiagnostics = _voice.Diagnostics;
-        DiagnosticsText.Text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"provider {_session.ProviderDisplayName}  connection {connectionDiagnostics.State}  protocol {connectionDiagnostics.ProtocolVersion}  transport {connectionDiagnostics.Transport}\n" +
-            $"nodes {diagnostics.Nodes}/{_session.SceneBudget}  edges {diagnostics.Edges}  labels {diagnostics.Labels}  zoom {diagnostics.Zoom:0.00}\n" +
-            $"layout {diagnostics.LayoutDuration.TotalMilliseconds:0.00} ms  prep {diagnostics.ScenePreparationDuration.TotalMilliseconds:0.00} ms  render {diagnostics.LastRenderDuration.TotalMilliseconds:0.00} ms  load {_session.LastLoadDuration.TotalMilliseconds:0.0} ms\n" +
-            $"bg {diagnostics.BackgroundDuration.TotalMilliseconds:0.00}  edge {diagnostics.EdgeDuration.TotalMilliseconds:0.00}  glyph {diagnostics.GlyphDuration.TotalMilliseconds:0.00}  label {diagnostics.LabelPreparationDuration.TotalMilliseconds + diagnostics.LabelDrawDuration.TotalMilliseconds:0.00} ms\n" +
-            $"ipc {connectionDiagnostics.LastRequestDuration.TotalMilliseconds:0.0} ms  response {connectionDiagnostics.LastResponseNodeCount} nodes  search {connectionDiagnostics.LastSearchResultCount}  timeouts {connectionDiagnostics.TimeoutCount}  reconnects {connectionDiagnostics.ReconnectCount}  stale {connectionDiagnostics.StaleResponseRejectionCount}\n" +
-            $"alloc {diagnostics.RenderAllocatedBytes / 1024d:0.0} KiB  caches text {diagnostics.TextCacheEntries}/256 resources {diagnostics.ResourceCacheEntries}/576  rain {rainDiagnostics.RenderedTokens} @ {rainDiagnostics.LastRenderDuration.TotalMilliseconds:0.00} ms\n" +
-            $"voice {voiceDiagnostics.State}  provider {voiceDiagnostics.Provider}  init {voiceDiagnostics.InitializationDuration.TotalMilliseconds:0.0} ms  capture {voiceDiagnostics.CaptureDuration.TotalMilliseconds:0.0} ms  transcribe {voiceDiagnostics.TranscriptionDuration.TotalMilliseconds:0.0} ms  execute {voiceDiagnostics.ExecutionDuration.TotalMilliseconds:0.0} ms  chars {voiceDiagnostics.TranscriptLength}  class {voiceDiagnostics.Classification}");
-    }
-
-    private void ClearSearch()
-    {
-        SearchBox.Text = string.Empty;
-        _session.ClearSearch();
-    }
-
-    private void SynchronizeAccessibleList()
-    {
-        var neighborhood = _session.Neighborhood;
-        AccessibleFocusText.Text = neighborhood?.Focus.Path ?? "No folder selected";
-        var selectedId = _session.SelectedNode?.Id;
-        var highlights = _session.HighlightedNodeIds;
-        var items = neighborhood?.Nodes.Select(node =>
-        {
-            var isFocus = ExplorerIdentity.Equals(node.Id, neighborhood.FocusNodeId);
-            var isSelected = ExplorerIdentity.Equals(node.Id, selectedId);
-            var isMatch = highlights.Contains(node.Id);
-            var stateParts = new[]
-            {
-                isFocus ? "FOCUS" : null,
-                isMatch ? "MATCH" : null,
-                isSelected ? "SELECTED" : null,
-            }.Where(value => value is not null).ToArray();
-            var state = string.Join(" · ", stateParts);
-            var relationship = neighborhood.Edges
-                .Where(edge => edge.Kind == ExplorerGraphEdgeKind.Contextual && edge.Relationship is not null)
-                .Where(edge =>
-                    (ExplorerIdentity.Equals(edge.SourceId, neighborhood.FocusNodeId) && ExplorerIdentity.Equals(edge.TargetId, node.Id)) ||
-                    (ExplorerIdentity.Equals(edge.TargetId, neighborhood.FocusNodeId) && ExplorerIdentity.Equals(edge.SourceId, node.Id)))
-                .OrderByDescending(edge => edge.Relationship!.Strength)
-                .Select(edge => edge.Relationship)
-                .FirstOrDefault();
-            var kind = node.Kind switch
-            {
-                ExplorerNodeKind.Context => "Previous folder",
-                ExplorerNodeKind.Aggregate => "Aggregate",
-                ExplorerNodeKind.Folder => "Folder",
-                ExplorerNodeKind.File => "File",
-                _ => "Node",
-            };
-            var accessibleState = state.Length == 0
-                ? string.Empty
-                : $", {string.Join(", ", stateParts).ToLowerInvariant()}";
-            var sceneRelation = ExplorerSceneSemantics.Describe(neighborhood, node);
-            var role = DescribeRoles(node);
-            var roleDescription = $", {sceneRelation}";
-            var relationDescription = relationship is null
-                ? string.Empty
-                : string.IsNullOrWhiteSpace(relationship.Reason)
-                    ? ", contextually related"
-                    : $", contextually related: {relationship.Reason}";
-            return new AccessibleNodeItem(
-                node.Id,
-                node.Name,
-                neighborhood.ViewMode == ExplorerViewMode.Hybrid
-                    ? $"{kind} · {sceneRelation} · {role} · {node.Path}"
-                    : $"{kind} · {sceneRelation} · {node.Path}",
-                state,
-                $"{node.Name}, {kind}{roleDescription}{accessibleState}{relationDescription}");
-        }).ToArray() ?? [];
-
-        _isSynchronizingAccessibleList = true;
-        try
-        {
-            AccessibleNodesList.ItemsSource = items;
-            AccessibleNodesList.SelectedItem = items.FirstOrDefault(item =>
-                ExplorerIdentity.Equals(item.NodeId, selectedId));
-        }
-        finally
-        {
-            _isSynchronizingAccessibleList = false;
-        }
-    }
-
-    private void DismissTransientSurfaces()
-    {
-        if (_voice.IsActive)
-        {
-            _ = _voice.CancelAsync();
-        }
-
-        if (_session.IsLoading || _session.IsSearching)
-        {
-            _session.CancelOperations();
-        }
-
-        SettingsPanel.IsVisible = false;
-        ConnectionPanel.IsVisible = false;
-        AccessibleListPanel.IsVisible = false;
-        ContextFilterPanel.IsVisible = false;
-        CollapseSearchEditor();
-        _detailsDismissed = true;
-        DetailsPanel.IsVisible = false;
-        if (_session.SearchResult is not null)
-        {
-            ClearSearch();
-        }
-
-        GraphScene.Focus();
-        UpdateWelcomeAndStatusVisibility();
-    }
-
-    private void UpdateWelcomeAndStatusVisibility()
-    {
-        var panelOwnsStatusSpace = ConnectionPanel.IsVisible ||
-            SettingsPanel.IsVisible ||
-            AccessibleListPanel.IsVisible ||
-            ContextFilterPanel.IsVisible ||
-            HistoryPanel.IsVisible ||
-            SearchResultsPanel.IsVisible;
-
-        WelcomePanel.IsVisible = !_interfaceHidden && _session.Neighborhood is null &&
-            !_session.IsLoading &&
-            !panelOwnsStatusSpace &&
-            !SearchEditor.IsVisible &&
-            !DetailsPanel.IsVisible;
-        StatusHud.IsVisible = !_interfaceHidden && !panelOwnsStatusSpace;
-        UpdateResponsiveShellVisibility();
-    }
-
     private void OnInterfaceToggleClick(object? sender, RoutedEventArgs e)
     {
-        // Visibility only: keep the current graph, selection, pan, query and pending work.
         _interfaceHidden = !_interfaceHidden;
         SettingsPanel.IsVisible = false;
-        ConnectionPanel.IsVisible = false;
-        AccessibleListPanel.IsVisible = false;
-        ContextFilterPanel.IsVisible = false;
-        HistoryPanel.IsVisible = false;
-        _detailsDismissed = true;
         UpdateView();
-        if (_interfaceHidden) { SearchBox.Focus(); } else { InterfaceToggleButton.Focus(); }
+        if (_interfaceHidden) { MinimalSearchBox.Focus(); } else { InterfaceToggleButton.Focus(); }
+    }
+    private void OnCollapseSidebarClick(object? sender, RoutedEventArgs e) { _sidebarCollapsed = !_sidebarCollapsed; UpdateView(); }
+    private void OnSettingsClick(object? sender, RoutedEventArgs e) => SettingsPanel.IsVisible = !SettingsPanel.IsVisible;
+    private async void OnOpenFileClick(object? sender, RoutedEventArgs e) => await _session.OpenSelectedAsync();
+    private void OnZoomInClick(object? sender, RoutedEventArgs e) => GraphScene.ZoomIn();
+    private void OnZoomOutClick(object? sender, RoutedEventArgs e) => GraphScene.ZoomOut();
+    private void OnFitClick(object? sender, RoutedEventArgs e) => GraphScene.ResetView();
+    private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void OnMaximizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnTitlePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || e.Source is Button) { return; }
+        if (e.ClickCount == 2) { OnMaximizeClick(this, new RoutedEventArgs()); }
+        else { BeginMoveDrag(e); }
     }
 
-    private void RestoreInterface()
+    private void ApplyPreferences()
     {
-        if (!_interfaceHidden) { return; }
-        _interfaceHidden = false;
-        UpdateView();
-    }
-
-    private void UpdateResponsiveShellVisibility()
-    {
-        UpdatePinnedFolderState();
-        var detailsOwnsCompactRightPlane = ClientSize.Width <= 900 && DetailsPanel.IsVisible;
-        CustomTitleBar.IsVisible = !_interfaceHidden;
-        NavigationHud.IsVisible = !_interfaceHidden;
-        ZoomHud.IsVisible = !_interfaceHidden;
-        VoiceHud.IsVisible = !_interfaceHidden || _voice.IsActive;
-        DiagnosticsPanel.IsVisible = !_interfaceHidden && _preferences.DiagnosticsVisible;
-        FocusHud.IsVisible = !_interfaceHidden && !detailsOwnsCompactRightPlane;
-        ModeHud.IsVisible = !_interfaceHidden && !detailsOwnsCompactRightPlane;
-        UtilityHud.IsVisible = _interfaceHidden || !detailsOwnsCompactRightPlane;
-        UtilityControls.IsVisible = !_interfaceHidden;
-        SearchToggleButton.IsVisible = !_interfaceHidden;
-        UtilityHud.Margin = _interfaceHidden ? new Thickness(0, 16, 16, 0) : new Thickness(0, 52, 16, 0);
-        SearchEditor.Margin = _interfaceHidden ? new Thickness(0, 16, 76, 0) : new Thickness(0, 106, 16, 0);
-        if (_interfaceHidden) { SearchEditor.IsVisible = true; }
-        var toggleLabel = _interfaceHidden ? "Show controls" : "Hide controls";
-        AutomationProperties.SetName(InterfaceToggleButton, toggleLabel);
-        ToolTip.SetTip(InterfaceToggleButton, toggleLabel + " · Ctrl+H");
-    }
-
-    private void UpdateHistoryView()
-    {
-        if (HistoryText is not null)
+        if (!_ready) { return; }
+        _syncing = true;
+        RequestedThemeVariant = _preferences.Theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
+        ThemePicker.SelectedIndex = _preferences.Theme == "Light" ? 1 : 0;
+        ReducedMotionToggle.IsChecked = _preferences.ReducedMotion;
+        ReducedEffectsToggle.IsChecked = _preferences.ReducedEffects;
+        GraphScene.ReducedMotion = _preferences.ReducedMotion;
+        GraphScene.ReducedEffects = _preferences.ReducedEffects;
+        foreach (var row in PinnedEntries.Children.OfType<Grid>())
         {
-            HistoryText.Text = _session.NavigationTrail.Count == 0 ? "No previous focus." : "Recent stops";
-            HistoryEntries.Children.Clear();
-            foreach (var entry in _session.NavigationTrail)
+            if (row.Children[0] is Button { Content: Grid content } && content.Children[0] is PinnedFolderIcon icon) { icon.ReducedEffects = _preferences.ReducedEffects; }
+        }
+        _syncing = false;
+        GraphScene.InvalidateVisual();
+    }
+    private void OnThemeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || _syncing) { return; }
+        _preferences = _preferences with { Theme = ThemePicker.SelectedIndex == 1 ? "Light" : "Dark" };
+        _preferencesStore.Save(_preferences);
+        ApplyPreferences();
+    }
+    private void OnPreferencesChanged(object? sender, RoutedEventArgs e)
+    {
+        if (!_ready || _syncing) { return; }
+        _preferences = _preferences with { ReducedMotion = ReducedMotionToggle.IsChecked == true, ReducedEffects = ReducedEffectsToggle.IsChecked == true };
+        _preferencesStore.Save(_preferences);
+        ApplyPreferences();
+    }
+    private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.H) { OnInterfaceToggleClick(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.F) { ShowSearch(); e.Handled = true; }
+        else if (e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.P) { _session.PinCurrent(); e.Handled = true; }
+        else if (e.KeyModifiers == KeyModifiers.Alt && e.Key == Key.Home) { await _session.ShowWorkspaceAsync(); e.Handled = true; }
+        else if (e.KeyModifiers == KeyModifiers.Alt && e.Key == Key.Left) { await _session.GoUpAsync(); e.Handled = true; }
+        else if (e.KeyModifiers == KeyModifiers.Control && e.Key == Key.R) { await _session.RefreshAsync(); e.Handled = true; }
+    }
+
+    private async void ReconcileWatchers(bool force = false)
+    {
+        if (!_monitorChanges || _disposed) { return; }
+        var roots = _session.State.Roots.Select(root => root.Path).ToArray();
+        var signature = string.Join('\n', roots);
+        if (!force && signature == _watcherSignature) { return; }
+        _watcherSignature = signature;
+        var revision = ++_watcherRevision;
+        foreach (var path in _watchers.Keys.Where(path => !roots.Contains(path, PathBoundary.Comparer)).ToArray())
+        {
+            _watchers[path].Dispose();
+            _watchers.Remove(path);
+        }
+        if (_watcherBuildRunning) { _watcherReconcilePending = true; return; }
+        _watcherBuildRunning = true;
+        var replacements = await Task.Run(() => CreateWatchers(roots));
+        _watcherBuildRunning = false;
+        if (_disposed || revision != _watcherRevision)
+        {
+            foreach (var watcher in replacements.Values) { watcher.Dispose(); }
+        }
+        else
+        {
+            foreach (var watcher in _watchers.Values) { watcher.Dispose(); }
+            _watchers.Clear();
+            foreach (var pair in replacements) { _watchers.Add(pair.Key, pair.Value); }
+            // Accepted watchers are tracked before native subscription begins. A root
+            // removal or close can dispose them even if another drive is unresponsive.
+            _ = Task.Run(() => StartWatchers(replacements.Values));
+        }
+        if (_watcherReconcilePending && !_disposed)
+        {
+            _watcherReconcilePending = false;
+            ReconcileWatchers(force: true);
+        }
+    }
+
+    private Dictionary<string, FileSystemWatcher> CreateWatchers(string[] roots)
+    {
+        var watchers = new Dictionary<string, FileSystemWatcher>(PathBoundary.Comparer);
+        foreach (var path in roots)
+        {
+            // Metadata probes and native subscriptions stay off the UI thread. The same
+            // authority check as navigation rejects links, including redirected ancestors.
+            if (_disposed || !FileMapPathGuard.IsOrdinaryPath(path, path, requireDirectory: true)) { continue; }
+            FileSystemWatcher? watcher = null;
+            try
             {
-                var button = new Button
+                watcher = new FileSystemWatcher(path)
                 {
-                    Content = $"{entry.DisplayName} · {entry.ViewMode}",
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-                    HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-                    MinHeight = 44,
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite,
                 };
-                button.Classes.Add("hud");
-                AutomationProperties.SetName(button, $"Return to {entry.DisplayName}, {entry.ViewMode}");
-                button.Click += async (_, _) =>
-                {
-                    HistoryPanel.IsVisible = false;
-                    _detailsDismissed = true;
-                    try
-                    {
-                        await _session.NavigateTrailAsync(entry);
-                    }
-                    catch (OperationCanceledException) { }
-                    UpdateView();
-                    GraphScene.Focus();
-                };
-                HistoryEntries.Children.Add(button);
+                watcher.Created += OnFilesystemChanged;
+                watcher.Deleted += OnFilesystemChanged;
+                watcher.Changed += OnFilesystemChanged;
+                watcher.Renamed += OnFilesystemChanged;
+                watcher.Error += (_, _) => QueueRefresh();
+                watchers.Add(path, watcher);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                ArgumentException or PlatformNotSupportedException or System.Security.SecurityException)
+            {
+                watcher?.Dispose();
+                // The bounded periodic refresh still works if a native watch is unavailable.
+            }
+        }
+        return watchers;
+    }
+    private static void StartWatchers(IEnumerable<FileSystemWatcher> watchers)
+    {
+        foreach (var watcher in watchers)
+        {
+            try
+            {
+                if (FileMapPathGuard.IsOrdinaryPath(watcher.Path, watcher.Path, requireDirectory: true)) { watcher.EnableRaisingEvents = true; }
+                else { watcher.Dispose(); }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                ArgumentException or PlatformNotSupportedException or System.Security.SecurityException or ObjectDisposedException)
+            {
+                // Removed roots can dispose a watcher before this worker starts it.
+                watcher.Dispose();
             }
         }
     }
 
-    private void AnnounceStatus(string message)
+    private void OnFilesystemChanged(object sender, FileSystemEventArgs e) => QueueRefresh();
+    private void QueueRefresh()
     {
-        if (string.Equals(_lastAnnouncement, message, StringComparison.Ordinal))
+        // Coalesce before dispatch so a filesystem burst cannot flood the UI queue.
+        if (_disposed || Interlocked.Exchange(ref _refreshQueued, 1) != 0) { return; }
+        Dispatcher.UIThread.Post(() =>
         {
-            return;
-        }
-
-        _lastAnnouncement = message;
-        StatusAnnouncer.Text = message;
-        AutomationProperties.SetName(StatusAnnouncer, message);
+            if (_disposed) { return; }
+            _refreshPending = true;
+            _refreshTimer.Stop();
+            _refreshTimer.Start();
+        });
     }
-
-    private void UpdateMotionActivity()
+    private async Task RefreshPendingAsync()
     {
-        var active = IsVisible && IsActive && WindowState != WindowState.Minimized;
-        GraphScene.SetMotionActivity(active);
-        DataRain.SetMotionActivity(active);
+        if (_disposed) { _refreshTimer.Stop(); return; }
+        if (!_refreshPending) { _refreshTimer.Stop(); return; }
+        if (_session.IsBusy || _session.IsSearching) { return; }
+        _refreshTimer.Stop();
+        _refreshPending = false;
+        Interlocked.Exchange(ref _refreshQueued, 0);
+        await _session.RefreshAsync();
     }
-
-    private void SetTransientStatus(string message)
-    {
-        StatusText.Text = message;
-        AnnounceStatus(message);
-    }
-
     public void Dispose()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _diagnosticsTimer.Stop();
-        _voiceVisualTimer.Stop();
-        _voiceTranscriptTimer.Stop();
-        _detailsTypingTimer.Stop();
-        GraphScene.SetMotionActivity(false);
-        DataRain.SetMotionActivity(false);
-        _voice.StateChanged -= OnVoiceStateChanged;
-        _voice.Dispose();
-        _connection.StateChanged -= OnConnectionStateChanged;
-        _session.ProviderFailed -= OnProviderFailed;
+        if (_disposed) { return; }
+        _disposed = true;
+        _session.Changed -= OnSessionChanged;
+        _searchTimer.Stop();
+        _refreshTimer.Stop();
+        _recheckTimer.Stop();
+        foreach (var watcher in _watchers.Values) { watcher.Dispose(); }
+        _watchers.Clear();
         _session.Dispose();
-        _isDisposed = true;
-    }
-
-    private static string FormatSize(long? bytes)
-    {
-        if (bytes is null)
-        {
-            return "—";
-        }
-
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        var value = (double)bytes.Value;
-        var unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
-        {
-            value /= 1024;
-            unit++;
-        }
-
-        return $"{value:0.#} {units[unit]}";
-    }
-
-    private void ApplyContextFilterToControls()
-    {
-        _isApplyingContextFilters = true;
-        try
-        {
-            var filter = _session.ContextFilter;
-            ContextKindFilter.SelectedIndex = IndexFromKind(filter.Kind);
-            ContextStrengthFilter.SelectedIndex = IndexFromStrength(filter.MinimumStrength);
-            ContextEvidenceFilter.SelectedIndex = IndexFromEvidence(filter.EvidenceClass);
-        }
-        finally
-        {
-            _isApplyingContextFilters = false;
-        }
-
-        var summary = _session.ContextFilterSummary;
-        ContextFilterSummaryText.Text = summary is null
-            ? "No authoritative Context response is loaded."
-            : $"{summary.VisibleRelationshipCount:N0} visible · {summary.MatchingRelationshipCount:N0} matching · {summary.AuthoritativeRelationshipCount:N0} authorized";
-        ClearContextFiltersButton.IsEnabled = _session.ContextFilter.IsActive;
-    }
-
-    private static ExplorerRelationshipKind? KindFromIndex(int index) => index switch
-    {
-        1 => ExplorerRelationshipKind.Related,
-        2 => ExplorerRelationshipKind.Topic,
-        3 => ExplorerRelationshipKind.Entity,
-        4 => ExplorerRelationshipKind.Temporal,
-        5 => ExplorerRelationshipKind.Ocr,
-        6 => ExplorerRelationshipKind.Transcript,
-        _ => null,
-    };
-
-    private static int IndexFromKind(ExplorerRelationshipKind? kind) => kind switch
-    {
-        ExplorerRelationshipKind.Related => 1,
-        ExplorerRelationshipKind.Topic => 2,
-        ExplorerRelationshipKind.Entity => 3,
-        ExplorerRelationshipKind.Temporal => 4,
-        ExplorerRelationshipKind.Ocr => 5,
-        ExplorerRelationshipKind.Transcript => 6,
-        _ => 0,
-    };
-
-    private static int StrengthFromIndex(int index) => index switch
-    {
-        1 => 60,
-        2 => 80,
-        3 => 100,
-        _ => 0,
-    };
-
-    private static int IndexFromStrength(int strength) => strength switch
-    {
-        >= 100 => 3,
-        >= 80 => 2,
-        >= 60 => 1,
-        _ => 0,
-    };
-
-    private static ExplorerRelationshipEvidenceClass? EvidenceFromIndex(int index) => index switch
-    {
-        1 => ExplorerRelationshipEvidenceClass.Deterministic,
-        2 => ExplorerRelationshipEvidenceClass.Derived,
-        _ => null,
-    };
-
-    private static int IndexFromEvidence(ExplorerRelationshipEvidenceClass? evidenceClass) => evidenceClass switch
-    {
-        ExplorerRelationshipEvidenceClass.Deterministic => 1,
-        ExplorerRelationshipEvidenceClass.Derived => 2,
-        _ => 0,
-    };
-
-    private static bool IsContextualMode(ExplorerViewMode viewMode) =>
-        viewMode is ExplorerViewMode.Context or ExplorerViewMode.Hybrid;
-
-    private static string DescribeRoles(ExplorerNode node)
-    {
-        var structural = (node.Roles & ExplorerNodeRole.Structural) != 0;
-        var contextual = (node.Roles & ExplorerNodeRole.Contextual) != 0;
-        return (structural, contextual) switch
-        {
-            (true, true) => "Structure and Context",
-            (false, true) => "Context",
-            _ => "Structure",
-        };
-    }
-
-    private static string StrengthLabel(int strength) => strength switch
-    {
-        >= 100 => "Confirmed",
-        >= 80 => "Strong",
-        >= 60 => "Moderate",
-        _ => "Limited",
-    };
-
-    private static string FriendlyProvenance(string provenance)
-    {
-        if (provenance.StartsWith("deterministic-evidence ", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"OmniSorSe deterministic evidence · {provenance}";
-        }
-
-        return provenance switch
-        {
-            "Content Intelligence 1" => "Content Intelligence · Content Intelligence 1",
-            "Media Intelligence 1" => "Media Intelligence · Media Intelligence 1",
-            _ => provenance,
-        };
-    }
-
-    private static bool IsConnectionFailure(Exception exception) => exception is
-        IOException or
-        UnauthorizedAccessException or
-        TimeoutException or
-        ExplorerProtocolException or
-        ExplorerProtocolMalformedResponseException;
-
-    private sealed record ConnectedRootItem(Protocol.ExplorerNode Node)
-    {
-        public override string ToString() => Node.AuthorizedPath ?? Node.Name;
-    }
-
-    private sealed record AccessibleNodeItem(
-        string NodeId,
-        string Name,
-        string Description,
-        string StateText,
-        string AccessibleName)
-    {
-        public override string ToString() => AccessibleName;
+        GC.SuppressFinalize(this);
     }
 }

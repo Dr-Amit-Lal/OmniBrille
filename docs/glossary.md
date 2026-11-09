@@ -1,31 +1,21 @@
-# OmniBrille glossary
+# Spatial workspace glossary
 
-This file defines terms that repository history shows are easy to conflate. Current source and [`architecture.md`](architecture.md) remain authoritative for behavior.
+Current meanings for `1.2.0-nebula.4`; [architecture](architecture.md) owns behavior.
 
 | Term | Meaning |
 | --- | --- |
-| **Structure** | Filesystem or indexed containment presented as a bounded graph. Standalone and connected providers can both supply it. |
-| **Context** | A connected-only view of OmniSorSe-authored relationships. OmniBrille filters and presents this evidence but does not create it. |
-| **Hybrid** | One client-composed bounded scene combining authorized Structure and Context snapshots. It is not a protocol operation or a semantic engine. |
-| **Graph focus** | The central node whose bounded neighborhood is being shown. This is distinct from selected node and keyboard focus. |
-| **Selected node** | The visible node whose details/actions are active. Selection may change without acquiring a new graph focus. |
-| **Keyboard focus** | The Avalonia control currently receiving keyboard input. It is UI state, not graph focus. |
-| **Previous-focus node** | In Structure scenes, a receding orientation node represented by `ExplorerNodeKind.Context`. This enum value is historical structural context, not semantic Context mode. |
-| **Scene relation** | The explicit relationship of a visible node to graph focus: current focus, direct child, descendant preview, previous focus, contextual, structural-and-contextual, aggregate, or visible. It is not a renderer density value. |
-| **Descendant preview** | An actual subfolder of an admitted direct folder, acquired through the provider and connected only to that known parent. It is a bounded Structure preview one additional level below the direct children, with explicit semantics independent of presentation density. |
-| **Presentation band** | A deterministic visual radius/scale/label-priority group. It never represents filesystem depth, containment, or provider authority. |
-| **Back** | Chronological session history, including mode/refocus and aggregate history where applicable. It is distinct from Up. |
-| **Up** | Navigation to the provider-authored containment parent of the current focus. Connected Up uses an opaque parent ID, never a display path. |
-| **Navigation trail** | Up to six recent actionable Back destinations with provider-authored names and their view modes. The session privately retains targets and validates each action against current navigation state; Connected opaque IDs are not exposed in the projection. |
-| **Standalone access root** | The filesystem path explicitly chosen by the user. It is the lexical security/navigation boundary for standalone enumeration and Search. |
-| **Connected access root** | An opaque OmniSorSe-issued source node ID. It is not a filesystem path and grants no direct filesystem authority. |
-| **Navigation target** | A provider-specific target: normally a path in Standalone and an opaque node ID in Connected. Code using it must not assume one representation. |
-| **Display path** | Human-readable provider text. In Connected mode it is a label only, never an access token or fallback path. |
-| **Core graph model** | `OmniBrille.Core` application-local entries, nodes, edges, snapshots, and provider interfaces. |
-| **Protocol wire model** | `OmniSorSe.ExplorerProtocol` DTOs/enums carried over Explorer Protocol v1. Similar type names do not make the two models interchangeable. |
-| **Authoritative snapshot** | Immutable authorized provider data, or a bounded client composition of such data for Hybrid, retained before local presentation filters/render budgets. `ExplorerSession` owns the active projection source; the connected provider has a separate short-lived Context cache. |
-| **Presentation projection** | The visible bounded `ExplorerNeighborhood` built from authoritative provider data. Filters and budgets can omit data without changing authority. |
-| **Aggregate** | A deterministic structural paging control representing items that do not fit the 48-node scene. It is not semantic clustering. |
-| **Stale context** | The last valid connected graph retained for orientation after a provider failure. It must be visibly non-live and cannot authorize new work. |
-| **Operation generation** | A monotonically increasing load, Search, details, or Context/Hybrid identity used with cancellation so late work cannot replace newer state of the same kind. |
-| **Provider generation** | The authority identity changed on provider replacement; it additionally invalidates a deferred voice transcript whose targets may contain obsolete paths or opaque IDs. |
+| Workspace root | One of at most 8 explicitly chosen local folders; authorizes browsing, search and live monitoring below it |
+| Workspace overview | Separate graph clusters for all chosen roots and bounded immediate contents |
+| Pin | One of at most 12 independent saved folder shortcuts; does not itself add search/watch scope |
+| Pin excursion | Browsing an outside pin with that exact folder as temporary access root, returning to the workspace at its boundary |
+| Current root/path | Authorized browsing scope and displayed containing folder, saved in workspace JSON |
+| Selected node | Visible node chosen for an action; selection alone does not launch files |
+| Preview | Temporary validated ancestor chain for a Search result; does not commit current location |
+| Back / Up | One containing-folder step toward the workspace; no chronological-history semantics |
+| Aggregate | Bounded paging/open-folder control, not a semantic grouping inferred from document contents |
+| Operation generation | Identity used with cancellation to prevent old navigation/search/preview work replacing newer state |
+| Refresh | Bounded re-read of the visible scene and active query, triggered by user, watcher events or periodic recovery |
+| Presentation band | Visual placement/scale, never filesystem depth or authority |
+| Graph automation | Bounded visible-node selection/invocation projection over session state |
+
+Connected authority, Explorer Protocol, semantic Context/Hybrid, Voice and the old chronological Trail are historical concepts. The previous-folder glyph kind in shared `ExplorerModels` remains only for structural orientation; removed mode/provider/relationship contracts do not remain. Historical guides are labeled accordingly.

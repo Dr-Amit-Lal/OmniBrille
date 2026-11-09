@@ -1,5 +1,6 @@
-# My Files custom interface
+# My Files custom interface (historical)
 
+**Superseded in 1.2.0-nebula.4.** This retained guide describes removed earlier functionality and is not a current product contract. See [the local workspace architecture](architecture.md) and [ADR 0006](decisions/0006-local-spatial-workspace.md).
 My Files is retired from the application entry points in `1.2.0-nebula.1`. Normal launch, the single **OmniBrille Spatial Explorer** Start Menu shortcut, `--advanced`, and OmniSorSe handoffs all use Spatial Explorer. The former My Files implementation and regression fixtures remain in source for now; its saved workspace is preserved but not read into Spatial Explorer. The following details describe that dormant implementation.
 
 ## Interaction

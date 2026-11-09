@@ -74,15 +74,16 @@ public sealed class NavigationStateTests
     }
 
     [Fact]
-    public void ConnectedNavigation_DoesNotCollapseDifferentlyCasedOpaqueIds()
+    public void LocalNavigation_UsesNativePathCaseSemantics()
     {
+        var root = Path.Combine(Path.GetTempPath(), "root");
+        var upper = Path.Combine(root, "Node-A");
+        var lower = Path.Combine(root, "node-a");
         var state = new NavigationState();
-        state.SetRoot("opaque-root", ExplorerProviderMode.Connected);
-
-        state.NavigateTo("Node-A");
-        state.NavigateTo("node-a");
-
-        Assert.Equal("node-a", state.CurrentPath);
-        Assert.Equal(["opaque-root", "Node-A"], state.History);
+        state.SetRoot(root);
+        state.NavigateTo(upper);
+        state.NavigateTo(lower);
+        Assert.Equal(OperatingSystem.IsWindows() ? upper : lower, state.CurrentPath);
+        Assert.Equal(OperatingSystem.IsWindows() ? 1 : 2, state.History.Count);
     }
 }

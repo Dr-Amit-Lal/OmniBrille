@@ -1,5 +1,6 @@
 # OmniBrille roadmap
 
+**Current fork: 1.2.0-nebula.4.** The product is the local spatial workspace described in [README](README.md) and [ADR 0006](docs/decisions/0006-local-spatial-workspace.md). The staged roadmap and follow-ups below are retained upstream history; removed voice/connection/mode work is not a current implementation plan.
 Version 1.2.0 includes the implementation fixes from issues #1–#9; native visual/control/motion, microphone/noise, and physical sound acceptance remain manual follow-up. See [release notes](docs/release-notes.md) for current behavior and downloads and the [issue audit](docs/runs/2026-09-11-github-issue-audit.md) for the preserved investigation.
 
 Checked items record implementation or engineering evidence at their named stage. Older stage descriptions are historical milestones and may be superseded by later stages; [architecture](docs/architecture.md) and the [interaction contract](docs/interaction-state-contract.md) define current behavior.

@@ -36,6 +36,10 @@ public sealed record SceneDiagnostics(
     int ResourceCacheEntries)
 {
     public int EdgeGlowDrawCalls { get; init; }
+    public int PreviewEdges { get; init; }
+    public int PreviewParticles { get; init; }
+    public int MatchBadges { get; init; }
+    public int OverlappingLabelPairs { get; init; }
 }
 
 public sealed class GraphSceneControl : Control
@@ -70,8 +74,20 @@ public sealed class GraphSceneControl : Control
     };
 
     private readonly RadialGraphLayout _structureLayoutEngine = new();
-    private readonly ContextGraphLayout _contextLayoutEngine = new();
-    private readonly HybridGraphLayout _hybridLayoutEngine = new();
+    private static readonly Color PreviewGold = Color.Parse("#FFD36A");
+    private static readonly Color PreviewGoldLight = Color.Parse("#8A5700");
+    private static readonly Color BadgeText = Color.Parse("#101725");
+    private bool _workspaceMode;
+    private string[] _clusterRootIds = [];
+    private string[] _workspaceBaseRootIds = [];
+    private IReadOnlyDictionary<string, GraphLayoutNode>? _workspaceBaseLayout;
+    private readonly HashSet<string> _clusterRoots = new(ExplorerIdentity.Comparer);
+    private IReadOnlySet<string> _previewPathNodeIds = new HashSet<string>(ExplorerIdentity.Comparer);
+    private IReadOnlyDictionary<string, int> _matchCounts = new Dictionary<string, int>(ExplorerIdentity.Comparer);
+    private string? _previewNodeId;
+    private int _previewEdges;
+    private int _previewParticles;
+    private int _matchBadges;
     private readonly DispatcherTimer _animationTimer;
     private readonly Stopwatch _animationClock = new();
     private readonly Stopwatch _motionClock = Stopwatch.StartNew();
@@ -167,6 +183,8 @@ public sealed class GraphSceneControl : Control
 
     public event EventHandler? DismissRequested;
 
+    public event EventHandler? TextScaleChanged;
+
     public bool ReducedMotion
     {
         get => _reducedMotion;
@@ -222,6 +240,7 @@ public sealed class GraphSceneControl : Control
             _textScale = normalized;
             _textCache.Clear();
             InvalidateVisual();
+            TextScaleChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -229,7 +248,7 @@ public sealed class GraphSceneControl : Control
         _neighborhood?.Nodes.Count ?? 0,
         _neighborhood?.Edges.Count ?? 0,
         _renderedLabelCount,
-        GraphNeighborhoodBuilder.DefaultNodeBudget,
+        _workspaceMode ? WorkspaceGraphLayout.MaximumNodes : GraphNeighborhoodBuilder.DefaultNodeBudget,
         _zoom,
         _textScale,
         _animationClock.IsRunning,
@@ -248,6 +267,10 @@ public sealed class GraphSceneControl : Control
         _brushCache.Count + _penCache.Count + _folderFillCache.Count + _folderGlowCache.Count)
     {
         EdgeGlowDrawCalls = _edgeGlowDrawCalls,
+        PreviewEdges = _previewEdges,
+        PreviewParticles = _previewParticles,
+        MatchBadges = _matchBadges,
+        OverlappingLabelPairs = CountOverlappingLabels(),
     };
 
     internal bool ShouldAnimateMotion => !_reducedMotion && _motionAllowed && _neighborhood is not null;
@@ -263,6 +286,7 @@ public sealed class GraphSceneControl : Control
             _animationFrom.Clear();
         }
         UpdateTicker();
+        InvalidateVisual();
     }
 
     public void SetScene(
@@ -271,13 +295,65 @@ public sealed class GraphSceneControl : Control
         IReadOnlySet<string>? highlights,
         bool animate = true)
     {
+        _workspaceMode = false;
+        _clusterRoots.Clear();
+        _clusterRootIds = [];
+        _workspaceBaseRootIds = [];
+        _workspaceBaseLayout = null;
+        _previewPathNodeIds = new HashSet<string>(ExplorerIdentity.Comparer);
+        _matchCounts = new Dictionary<string, int>(ExplorerIdentity.Comparer);
+        _previewNodeId = null;
+        SetSceneCore(neighborhood, selectedNodeId, highlights, animate, null);
+    }
+
+    public void SetWorkspaceScene(
+        ExplorerNeighborhood? scene,
+        IReadOnlyList<string> clusterRootIds,
+        string? selectedNodeId,
+        IReadOnlySet<string>? previewPathNodeIds,
+        IReadOnlyDictionary<string, int>? matchCounts,
+        string? previewNodeId,
+        bool animate = false)
+    {
+        ArgumentNullException.ThrowIfNull(clusterRootIds);
+        var sameRoots = _workspaceMode && _clusterRootIds.SequenceEqual(clusterRootIds, ExplorerIdentity.Comparer);
+        var anchorMatches = _workspaceMode && _workspaceBaseLayout is not null &&
+            (previewNodeId is not null ? _workspaceBaseRootIds.All(id => clusterRootIds.Contains(id, ExplorerIdentity.Comparer))
+                : _workspaceBaseRootIds.SequenceEqual(clusterRootIds, ExplorerIdentity.Comparer));
+        var stableLayout = anchorMatches ? _workspaceBaseLayout : sameRoots ? _targetLayout : null;
+        _workspaceMode = true;
+        _clusterRootIds = clusterRootIds.ToArray();
+        _clusterRoots.Clear();
+        foreach (var id in _clusterRootIds) { _clusterRoots.Add(id); }
+        _previewPathNodeIds = previewPathNodeIds ?? new HashSet<string>(ExplorerIdentity.Comparer);
+        _matchCounts = matchCounts ?? new Dictionary<string, int>(ExplorerIdentity.Comparer);
+        _previewNodeId = previewNodeId;
+        SearchActive = _matchCounts.Count > 0 || previewNodeId is not null;
+        var highlights = new HashSet<string>(ExplorerIdentity.Comparer);
+        if (previewNodeId is not null) { highlights.Add(previewNodeId); }
+        SetSceneCore(scene, selectedNodeId, highlights, animate, stableLayout);
+        if (previewNodeId is null)
+        {
+            _workspaceBaseRootIds = _clusterRootIds;
+            _workspaceBaseLayout = _targetLayout;
+        }
+    }
+
+    private void SetSceneCore(
+        ExplorerNeighborhood? neighborhood, string? selectedNodeId,
+        IReadOnlySet<string>? highlights, bool animate, IReadOnlyDictionary<string, GraphLayoutNode>? stableWorkspaceLayout)
+    {
         var preparationClock = Stopwatch.StartNew();
-        var previousLayout = CurrentLayout();
+        var previousLayout = CurrentLayout().ToDictionary(pair => pair.Key, pair => pair.Value, ExplorerIdentity.Comparer);
+        if (stableWorkspaceLayout is null && !ReferenceEquals(_neighborhood, neighborhood)) { _hitTargets.Clear(); }
         _neighborhood = neighborhood;
+        var admittedIds = neighborhood?.Nodes.Select(node => node.Id).ToHashSet(ExplorerIdentity.Comparer);
+        foreach (var stale in _hitTargets.Keys.Where(id => admittedIds?.Contains(id) != true).ToArray()) { _hitTargets.Remove(stale); }
         if (_hoveredNodeId is not null &&
             (neighborhood is null || !neighborhood.Nodes.Any(node => ExplorerIdentity.Equals(node.Id, _hoveredNodeId))))
         {
             _hoveredNodeId = null;
+            ToolTip.SetTip(this, null);
         }
 
         var selectionChanged = !ExplorerIdentity.Equals(_selectedNodeId, selectedNodeId);
@@ -287,19 +363,16 @@ public sealed class GraphSceneControl : Control
         if (neighborhood is not null)
         {
             _drawOrder.AddRange(neighborhood.Nodes
-                .OrderBy(node => node.Id == neighborhood.FocusNodeId ? 1 : 0)
+                .OrderBy(node => IsClusterRoot(node.Id) ? 1 : 0)
                 .ThenBy(node => node.Id, ExplorerIdentity.Comparer));
         }
         PrepareScenePresentation();
 
         var layoutClock = Stopwatch.StartNew();
-        _targetLayout = neighborhood?.ViewMode switch
-        {
-            ExplorerViewMode.Context => _contextLayoutEngine.Layout(neighborhood, previousLayout),
-            ExplorerViewMode.Hybrid => _hybridLayoutEngine.Layout(neighborhood, previousLayout),
-            null => new Dictionary<string, GraphLayoutNode>(),
-            _ => _structureLayoutEngine.Layout(neighborhood, previousLayout),
-        };
+        _targetLayout = neighborhood is null ? new Dictionary<string, GraphLayoutNode>()
+            : _workspaceMode ? WorkspaceGraphLayout.Layout(neighborhood, _clusterRootIds,
+                stableWorkspaceLayout)
+            : _structureLayoutEngine.Layout(neighborhood, previousLayout);
         layoutClock.Stop();
         _layoutDuration = layoutClock.Elapsed;
         UpdateLensInfluences();
@@ -370,6 +443,9 @@ public sealed class GraphSceneControl : Control
         var allocatedBytesBefore = GC.GetAllocatedBytesForCurrentThread();
         _labelPreparationDuration = TimeSpan.Zero;
         _edgeGlowDrawCalls = 0;
+        _previewEdges = 0;
+        _previewParticles = 0;
+        _matchBadges = 0;
         base.Render(context);
         var palette = ActualThemeVariant == ThemeVariant.Light ? ScenePalette.Light : ScenePalette.Dark;
         EnsureCacheContext(palette);
@@ -381,6 +457,8 @@ public sealed class GraphSceneControl : Control
 
         if (_neighborhood is null)
         {
+            _preparedLabels.Clear();
+            _visibleLabelIds.Clear();
             _renderedLabelCount = 0;
             renderClock.Stop();
             _lastRenderDuration = renderClock.Elapsed;
@@ -494,9 +572,8 @@ public sealed class GraphSceneControl : Control
             _selectedNodeId = nodeId;
             NodeSelected?.Invoke(this, nodeId);
             var node = GetAutomationNode(nodeId);
-            var enterOnClick = _neighborhood?.ViewMode == ExplorerViewMode.Structure &&
-                node?.IsNavigable == true && node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Context or ExplorerNodeKind.Aggregate &&
-                !ExplorerIdentity.Equals(nodeId, _neighborhood.FocusNodeId);
+            var enterOnClick = node?.IsNavigable == true && node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Context or ExplorerNodeKind.Aggregate &&
+                (_workspaceMode || !ExplorerIdentity.Equals(nodeId, _neighborhood!.FocusNodeId));
             if ((enterOnClick && e.ClickCount == 1) || (!enterOnClick && e.ClickCount == 2 && sameClickTarget))
             {
                 NodeActivated?.Invoke(this, nodeId);
@@ -537,6 +614,7 @@ public sealed class GraphSceneControl : Control
         if (!ExplorerIdentity.Equals(_hoveredNodeId, hovered))
         {
             _hoveredNodeId = hovered;
+            ToolTip.SetTip(this, hovered is null ? null : GetAutomationNode(hovered)?.Name);
             UpdateLensInfluences();
             NodeHovered?.Invoke(this, hovered);
             UpdateTicker();
@@ -550,6 +628,7 @@ public sealed class GraphSceneControl : Control
         if (_hoveredNodeId is not null)
         {
             _hoveredNodeId = null;
+            ToolTip.SetTip(this, null);
             UpdateLensInfluences();
             NodeHovered?.Invoke(this, null);
             InvalidateVisual();
@@ -646,48 +725,36 @@ public sealed class GraphSceneControl : Control
     internal ExplorerNode? GetAutomationNode(string nodeId) => _neighborhood?.Nodes.FirstOrDefault(node =>
         ExplorerIdentity.Equals(node.Id, nodeId));
 
-    internal ExplorerRelationship? GetAutomationRelationship(string nodeId) => _neighborhood?.Edges
-        .Where(edge => edge.Kind == ExplorerGraphEdgeKind.Contextual && edge.Relationship is not null)
-        .Where(edge =>
-            (ExplorerIdentity.Equals(edge.SourceId, _neighborhood.FocusNodeId) && ExplorerIdentity.Equals(edge.TargetId, nodeId)) ||
-            (ExplorerIdentity.Equals(edge.TargetId, _neighborhood.FocusNodeId) && ExplorerIdentity.Equals(edge.SourceId, nodeId)))
-        .OrderByDescending(edge => edge.Relationship!.Strength)
-        .Select(edge => edge.Relationship)
-        .FirstOrDefault();
-
     internal bool IsAutomationNodeSelected(string nodeId) =>
         ExplorerIdentity.Equals(nodeId, _selectedNodeId);
 
     internal bool IsAutomationNodeFocused(string nodeId) =>
-        ExplorerIdentity.Equals(nodeId, _neighborhood?.FocusNodeId);
+        (!_workspaceMode || _clusterRootIds.Length == 1) && ExplorerIdentity.Equals(nodeId, _neighborhood?.FocusNodeId);
 
     internal bool IsAutomationNodeHighlighted(string nodeId) => _highlights.Contains(nodeId);
 
     internal string GetAutomationNodeRelation(string nodeId)
     {
         var node = GetAutomationNode(nodeId);
-        if (node is null || _neighborhood is null)
-        {
-            return "visible graph item";
-        }
-
-        var relation = ExplorerSceneSemantics.Describe(_neighborhood, node);
-        if (_neighborhood.ViewMode != ExplorerViewMode.Hybrid)
-        {
-            return relation;
-        }
-
-        var structural = HasRole(node, ExplorerNodeRole.Structural);
-        var contextual = HasRole(node, ExplorerNodeRole.Contextual);
-        var roles = (structural, contextual) switch
-        {
-            (true, true) => "structural and contextually related",
-            (true, false) => "structural",
-            (false, true) => "contextually related",
-            _ => "visible",
-        };
-        return $"{relation}, {roles}";
+        if (node is null || _neighborhood is null) { return "visible graph item"; }
+        if (_workspaceMode && _clusterRoots.Contains(nodeId)) { return "workspace folder"; }
+        var parentEdge = _neighborhood.Edges.FirstOrDefault(edge => edge.Kind == ExplorerGraphEdgeKind.Structural &&
+            ExplorerIdentity.Equals(edge.TargetId, nodeId));
+        var parent = parentEdge is null ? null : GetAutomationNode(parentEdge.SourceId);
+        return parent is not null ? $"inside {parent.Name}"
+            : ExplorerIdentity.Equals(nodeId, _neighborhood.FocusNodeId) ? "current folder" : "visible folder item";
     }
+
+    internal string? GetAutomationSearchStatus(string nodeId)
+    {
+        var count = _matchCounts.GetValueOrDefault(nodeId);
+        if (ExplorerIdentity.Equals(nodeId, _previewNodeId)) { return "Search result preview"; }
+        if (_previewPathNodeIds.Contains(nodeId)) { return "On search result path"; }
+        return count > 0 ? $"{count} search matches inside" : null;
+    }
+
+    private bool IsClusterRoot(string nodeId) => _workspaceMode
+        ? _clusterRoots.Contains(nodeId) : ExplorerIdentity.Equals(nodeId, _neighborhood?.FocusNodeId);
 
     internal Rect GetAutomationNodeBounds(string nodeId) =>
         _hitTargets.TryGetValue(nodeId, out var bounds) ? bounds : default;
@@ -724,14 +791,13 @@ public sealed class GraphSceneControl : Control
 
         foreach (var node in _neighborhood.Nodes)
         {
-            // FNV-1a is deterministic across sessions. IDs remain opaque:
-            // neither paths, names, nor file contents determine a relationship.
-            _branchAccents[node.Id] = NebulaFolderGeometry.AccentFor(node.Id);
-            _labelNames[node.Id] = HasRole(node, ExplorerNodeRole.DescendantPreview) ? $"↳ {node.Name}" : node.Name;
+            // Appearance follows the native folder path so a pin and its graph
+            // glyph keep the same color. Only admitted edges define containment.
+            _branchAccents[node.Id] = NebulaFolderGeometry.AccentFor(node.Path);
+            _labelNames[node.Id] = !_workspaceMode && HasRole(node, ExplorerNodeRole.DescendantPreview) ? $"↳ {node.Name}" : node.Name;
         }
 
-        // Only an admitted structural edge may give a preview its parent's
-        // accent. Context data never becomes a client-inferred color cluster.
+        // Only a real containment edge gives a preview its parent's accent.
         foreach (var edge in _neighborhood.Edges)
         {
             if (edge.Kind == ExplorerGraphEdgeKind.Structural &&
@@ -768,24 +834,13 @@ public sealed class GraphSceneControl : Control
 
         var density = ReducedEffects ? 16 : 42;
         var pointBrush = Brush(palette.BackgroundPoint, ReducedEffects ? (byte)18 : (byte)38);
-        var linePen = Pen(palette.BackgroundPoint, ReducedEffects ? (byte)8 : (byte)20, 0.65);
-        var trianglePen = Pen(palette.BackgroundPoint, ReducedEffects ? (byte)5 : (byte)12, 0.55);
         for (var index = 0; index < density; index++)
         {
             var x = ((index * 127) % 997) / 997d * Bounds.Width;
             var y = ((index * 283 + 71) % 991) / 991d * Bounds.Height;
             _backgroundPoints[index] = new Point(x, y);
             context.DrawEllipse(pointBrush, null, _backgroundPoints[index], index % 7 == 0 ? 1.8 : 1.05, index % 7 == 0 ? 1.8 : 1.05);
-            if (index > 2 && index % 2 == 0)
-            {
-                context.DrawLine(linePen, _backgroundPoints[index - 2], _backgroundPoints[index]);
-            }
 
-            if (!ReducedEffects && index > 4 && index % 5 == 0)
-            {
-                context.DrawLine(trianglePen, _backgroundPoints[index - 5], _backgroundPoints[index - 2]);
-                context.DrawLine(trianglePen, _backgroundPoints[index - 2], _backgroundPoints[index]);
-            }
         }
     }
 
@@ -795,158 +850,54 @@ public sealed class GraphSceneControl : Control
         IReadOnlyDictionary<string, GraphLayoutNode> layout,
         Dictionary<string, GraphNodePresentation> presentations)
     {
-        var isNebula = ReferenceEquals(palette, ScenePalette.Dark);
         foreach (var edge in _neighborhood!.Edges)
         {
-            if (!layout.TryGetValue(edge.SourceId, out var source) ||
-                !layout.TryGetValue(edge.TargetId, out var target))
-            {
-                continue;
-            }
-
+            if (edge.Kind != ExplorerGraphEdgeKind.Structural ||
+                (_workspaceMode && _clusterRoots.Contains(edge.TargetId)) ||
+                !layout.TryGetValue(edge.SourceId, out var source) ||
+                !layout.TryGetValue(edge.TargetId, out var target)) { continue; }
             var sourceCenter = ToCanvas(source);
             var targetCenter = ToCanvas(target);
             var start = PeripheralPoint(source, sourceCenter, targetCenter);
             var end = PeripheralPoint(target, targetCenter, sourceCenter);
-            // During a scene transition glyphs can overlap. A reversed segment would
-            // pass straight back through them, so wait until there is space between them.
-            if (Vector.Dot(end - start, targetCenter - sourceCenter) <= 0)
+            if (Vector.Dot(end - start, targetCenter - sourceCenter) <= 0) { continue; }
+            var onPreviewPath = _previewNodeId is not null &&
+                _previewPathNodeIds.Contains(edge.SourceId) && _previewPathNodeIds.Contains(edge.TargetId);
+            var accent = onPreviewPath ? PreviewAccent(palette) : ReferenceEquals(palette, ScenePalette.Dark)
+                ? _branchAccents.GetValueOrDefault(edge.TargetId, palette.Edge) : palette.Edge;
+            var emphasized = onPreviewPath || ExplorerIdentity.Equals(_selectedNodeId, edge.TargetId) ||
+                ExplorerIdentity.Equals(_hoveredNodeId, edge.TargetId) || _highlights.Contains(edge.TargetId);
+            var opacity = Math.Max(0.85, Math.Min(source.Opacity, target.Opacity));
+            if (!ReducedEffects && emphasized)
             {
-                continue;
+                context.DrawLine(Pen(accent, ToByte(28 * opacity), onPreviewPath ? 4 : 3), start, end);
+                _edgeGlowDrawCalls++;
             }
-            var sourcePresentation = presentations[edge.SourceId];
-            var targetPresentation = presentations[edge.TargetId];
-            var opacity = Math.Min(source.Opacity, target.Opacity) *
-                Math.Min(sourcePresentation.OpacityMultiplier, targetPresentation.OpacityMultiplier);
-            var isPreviewEdge = HasRole(GetAutomationNode(edge.TargetId)!, ExplorerNodeRole.DescendantPreview);
-            var edgeBand = Math.Max(source.PresentationBand, target.PresentationBand);
-            var selected = _selectedNodeId is not null &&
-                !ExplorerIdentity.Equals(_selectedNodeId, _neighborhood.FocusNodeId) &&
-                (ExplorerIdentity.Equals(edge.SourceId, _selectedNodeId) ||
-                 ExplorerIdentity.Equals(edge.TargetId, _selectedNodeId));
-            var hovered = _hoveredNodeId is not null &&
-                !ExplorerIdentity.Equals(_hoveredNodeId, _neighborhood.FocusNodeId) &&
-                (ExplorerIdentity.Equals(edge.SourceId, _hoveredNodeId) ||
-                 ExplorerIdentity.Equals(edge.TargetId, _hoveredNodeId));
-            var highlighted =
-                (!ExplorerIdentity.Equals(edge.SourceId, _neighborhood.FocusNodeId) &&
-                 _highlights.Contains(edge.SourceId)) ||
-                (!ExplorerIdentity.Equals(edge.TargetId, _neighborhood.FocusNodeId) &&
-                 _highlights.Contains(edge.TargetId));
-            var emphasized = selected || hovered || highlighted;
-            if (emphasized)
+            // Every relationship is one straight, crisp containment segment.
+            context.DrawLine(Pen(accent, ToByte((onPreviewPath ? 255 : 205) * opacity), onPreviewPath ? 1.4 : 1.2), start, end);
+            if (onPreviewPath)
             {
-                opacity = Math.Max(opacity, 0.64);
+                _previewEdges++;
+                if (!ReducedEffects && ShouldAnimateMotion) { DrawPreviewDust(context, start, end, accent); }
             }
-
-            if (edge.Kind == ExplorerGraphEdgeKind.Contextual)
-            {
-                var strength = Math.Clamp((edge.Relationship?.Strength ?? 50) / 100d, 0.35, 1);
-                if (!ReducedEffects && emphasized)
-                {
-                    DrawEdgeGlow(context,
-                        Pen(palette.ContextEdgeGlow, ToByte(58 * opacity), 5),
-                        start,
-                        end);
-                }
-
-                DrawDashedLine(
-                    context,
-                    Pen(
-                        palette.ContextEdge,
-                        ToByte((emphasized ? 235 : 155) * opacity * strength),
-                        emphasized ? 1.65 : 0.95),
-                    start,
-                    end,
-                    ReducedEffects ? 7 : 6,
-                    ReducedEffects ? 6 : 4);
-                context.DrawEllipse(
-                    Brush(palette.ContextEdgeGlow, ToByte((emphasized ? 235 : 170) * opacity)),
-                    null,
-                    end,
-                    emphasized ? 2.4 : 1.55,
-                    emphasized ? 2.4 : 1.55);
-                continue;
-            }
-
-            if (isNebula)
-            {
-                var accent = _branchAccents.GetValueOrDefault(edge.TargetId, palette.Edge);
-                var constellationEdgeMultiplier = emphasized ? 1 : Math.Max(0.56,
-                    Math.Min(sourcePresentation.EdgeMultiplier, targetPresentation.EdgeMultiplier));
-                if (!ReducedEffects && emphasized)
-                {
-                    DrawEdgeGlow(context, Pen(palette.Selection, ToByte(28 * opacity), 3), start, end);
-                }
-                context.DrawLine(
-                    Pen(emphasized ? palette.Selection : accent,
-                        ToByte((emphasized ? 210 : 110) * Math.Max(opacity, 0.48) * constellationEdgeMultiplier),
-                        emphasized ? 1.2 : isPreviewEdge ? 0.75 : 0.65),
-                    start, end);
-                continue;
-            }
-
-            if (!ReducedEffects && (edgeBand <= 1 || emphasized))
-            {
-                DrawEdgeGlow(context,
-                    Pen(
-                        emphasized ? palette.Selection : palette.EdgeGlow,
-                        ToByte((emphasized ? 52 : 26) * opacity * Math.Max(sourcePresentation.GlowMultiplier, targetPresentation.GlowMultiplier)),
-                        emphasized ? 5.5 : 4.2),
-                    start,
-                    end);
-            }
-
-            var edgeMultiplier = emphasized
-                ? 1
-                : Math.Min(sourcePresentation.EdgeMultiplier, targetPresentation.EdgeMultiplier);
-            if (isPreviewEdge)
-            {
-                opacity = Math.Max(opacity, 0.55);
-                edgeMultiplier = Math.Max(edgeMultiplier, 0.6);
-            }
-            context.DrawLine(
-                Pen(
-                    emphasized ? palette.Selection : palette.Edge,
-                    ToByte((emphasized ? 225 : 182) * opacity * edgeMultiplier),
-                    emphasized ? 1.6 : edgeBand <= 1 ? 1.2 : edgeBand == 2 ? 0.76 : 0.52),
-                start,
-                end);
-            context.DrawEllipse(
-                Brush(palette.EdgeGlow, ToByte(220 * opacity * edgeMultiplier)),
-                null,
-                end,
-                emphasized || edgeBand <= 1 ? 2.1 : 1.2,
-                emphasized || edgeBand <= 1 ? 2.1 : 1.2);
         }
     }
 
-    private void DrawEdgeGlow(DrawingContext context, Pen pen, Point start, Point end)
+    private void DrawPreviewDust(DrawingContext context, Point start, Point end, Color accent)
     {
-        context.DrawLine(pen, start, end);
-        _edgeGlowDrawCalls++;
-    }
-
-    private static void DrawDashedLine(
-        DrawingContext context,
-        Pen pen,
-        Point start,
-        Point end,
-        double dashLength,
-        double gapLength)
-    {
-        var vector = new Vector(end.X - start.X, end.Y - start.Y);
-        var length = vector.Length;
-        if (length <= 0.001)
+        var direction = new Vector(end.X - start.X, end.Y - start.Y);
+        var length = direction.Length;
+        if (length < 8) { return; }
+        var normal = new Vector(-direction.Y / length, direction.X / length);
+        var time = _motionClock.Elapsed.TotalSeconds;
+        for (var index = 0; index < 3; index++)
         {
-            return;
-        }
-
-        var direction = vector / length;
-        for (var offset = 0d; offset < length; offset += dashLength + gapLength)
-        {
-            var segmentEnd = Math.Min(length, offset + dashLength);
-            context.DrawLine(pen, start + (direction * offset), start + (direction * segmentEnd));
+            var progress = (time * 0.23 + index / 3d) % 1;
+            var offset = Math.Sin(time * 2 + index * 2.1) * 2.6;
+            var point = start + direction * progress + normal * offset;
+            context.DrawEllipse(Brush(accent, 70), null, point, 2.5, 2.5);
+            context.DrawEllipse(Brush(accent, 240), null, point, index == 1 ? 1.15 : 0.8, index == 1 ? 1.15 : 0.8);
+            _previewParticles++;
         }
     }
 
@@ -959,7 +910,7 @@ public sealed class GraphSceneControl : Control
     {
         var center = ToCanvas(layout);
         var scale = layout.Scale * Math.Clamp(_zoom, 0.68, 1.65);
-        var isFocus = node.Id == _neighborhood!.FocusNodeId;
+        var isFocus = IsClusterRoot(node.Id);
         var isSelected = ExplorerIdentity.Equals(node.Id, _selectedNodeId);
         var isHovered = ExplorerIdentity.Equals(node.Id, _hoveredNodeId);
         var isHighlighted = _highlights.Contains(node.Id);
@@ -967,16 +918,10 @@ public sealed class GraphSceneControl : Control
         var opacity = Math.Max(
             MinimumInteractiveOpacity,
             Math.Clamp(layout.Opacity * presentation.OpacityMultiplier, 0, 1));
-        var color = isHighlighted
-            ? palette.Search
-            : isFocus
-                ? isNebula ? palette.Node : palette.Focus
-                : _neighborhood.ViewMode == ExplorerViewMode.Context ||
-                  (_neighborhood.ViewMode == ExplorerViewMode.Hybrid && HasRole(node, ExplorerNodeRole.Contextual) && !HasRole(node, ExplorerNodeRole.Structural))
-                    ? palette.ContextEdge
-                : node.Kind == ExplorerNodeKind.Context
-                    ? palette.Context
-                    : isNebula ? _branchAccents.GetValueOrDefault(node.Id, palette.Node) : palette.Node;
+        var color = _workspaceMode && !isFocus && _previewPathNodeIds.Contains(node.Id) ? PreviewAccent(palette)
+            : isHighlighted ? palette.Search
+            : isNebula ? _branchAccents.GetValueOrDefault(node.Id, palette.Node)
+            : isFocus ? palette.Focus : palette.Node;
 
         if (presentation.LevelOfDetail == GraphLevelOfDetail.Point)
         {
@@ -989,11 +934,14 @@ public sealed class GraphSceneControl : Control
         var halfHeight = 19 * scale;
         var nebulaSize = NebulaGlyphSize(node, scale, isFocus);
         var glyphHalfWidth = GlyphHalfWidth(node.Kind) * scale;
+        var previewTarget = _workspaceMode && ExplorerIdentity.Equals(node.Id, _previewNodeId);
+        var previewExtent = Math.Max(nebulaSize.Width, nebulaSize.Height) + 24;
+        if (previewTarget) { _glyphBoxes.Add(new LabelBox(center.X - previewExtent, center.Y - previewExtent, previewExtent * 2, previewExtent * 2)); }
         _glyphBoxes.Add(isNebula
             ? new LabelBox(center.X - nebulaSize.Width - 3, center.Y - nebulaSize.Height - 3, nebulaSize.Width * 2 + 6, nebulaSize.Height * 2 + 6)
             : new LabelBox(center.X - glyphHalfWidth - 3, center.Y - halfHeight - 3, glyphHalfWidth * 2 + 6, halfHeight * 2 + 6));
-        var hitWidth = Math.Max(44, (halfWidth + 10) * 2);
-        var hitHeight = Math.Max(44, (halfHeight + 10) * 2);
+        var hitWidth = Math.Max(44, ((isNebula ? nebulaSize.Width : halfWidth) + 8) * 2);
+        var hitHeight = Math.Max(44, ((isNebula ? nebulaSize.Height : halfHeight) + 8) * 2);
         _hitTargets[node.Id] = new Rect(
             center.X - (hitWidth / 2),
             center.Y - (hitHeight / 2),
@@ -1056,19 +1004,9 @@ public sealed class GraphSceneControl : Control
             }
         }
 
-        if (_neighborhood.ViewMode == ExplorerViewMode.Hybrid &&
-            HasRole(node, ExplorerNodeRole.Structural) &&
-            HasRole(node, ExplorerNodeRole.Contextual))
+        if (_workspaceMode)
         {
-            var marker = isNebula
-                ? new Point(center.X + nebulaSize.Width + 3, center.Y - nebulaSize.Height - 2)
-                : new Point(center.X + halfWidth - 2, center.Y - halfHeight + 1);
-            context.DrawEllipse(
-                Brush(palette.ContextEdgeGlow, ToByte(235 * opacity)),
-                Pen(palette.Background, ToByte(210 * opacity), 1),
-                marker,
-                3.1,
-                3.1);
+            DrawSearchAdornment(context, palette, node, center, isNebula ? nebulaSize : new Size(halfWidth, halfHeight));
         }
 
         if (presentation.LevelOfDetail < GraphLevelOfDetail.Labeled || !Bounds.Contains(center))
@@ -1078,9 +1016,11 @@ public sealed class GraphSceneControl : Control
 
         // Typography follows the immutable layout, not every hover/float frame.
         var baseScale = _targetLayout[node.Id].Scale * Math.Clamp(_zoom, 0.68, 1.65);
-        var fontSize = Math.Round((isFocus ? 14.5 : Math.Clamp(11.6 * baseScale, 9.5, 12.5)) * _textScale * 2) / 2;
+        var fontSize = Math.Round((isFocus ? _workspaceMode ? 17 : 14.5
+            : _workspaceMode ? Math.Clamp(13 * baseScale, 11, 14) : Math.Clamp(11.6 * baseScale, 9.5, 12.5)) * _textScale * 2) / 2;
         var widthScale = Math.Min(1.45, _textScale);
-        var maxWidth = (isFocus ? 230 : _neighborhood.Nodes.Count > 24 ? 105 : 155) * widthScale;
+        var maxWidth = (isFocus ? 230 : _neighborhood!.Nodes.Count > 24 ? 105 : 155) * widthScale;
+        if (_workspaceMode) { maxWidth = Math.Min(maxWidth, WorkspaceLabelWidth(node.Id)); }
         var labelClock = Stopwatch.StartNew();
         var key = new LabelTextKey(
             _labelNames[node.Id],
@@ -1099,7 +1039,8 @@ public sealed class GraphSceneControl : Control
             maxWidth: item.MaxWidth,
             maxLines: 1));
         var width = Math.Min(maxWidth, text.WidthIncludingTrailingWhitespace);
-        var origin = new Point(center.X - (width / 2), center.Y + (isNebula ? nebulaSize.Height : halfHeight) + 7);
+        var labelOffset = previewTarget ? previewExtent : isNebula ? nebulaSize.Height : halfHeight;
+        var origin = new Point(center.X - (width / 2), center.Y + labelOffset + 7);
         var bounds = new LabelBox(origin.X, origin.Y, width, Math.Max(fontSize + 3, text.Height));
         var prepared = new PreparedLabel(
             new LabelCandidate(node.Id, bounds, isFocus ? 1000 : 0, true),
@@ -1113,9 +1054,15 @@ public sealed class GraphSceneControl : Control
         return prepared;
     }
 
-    private static Size NebulaGlyphSize(ExplorerNode node, double scale, bool isFocus)
+    private Size NebulaGlyphSize(ExplorerNode node, double scale, bool isFocus)
     {
         var factor = Math.Clamp(scale, 0.55, 1.6);
+        if (_workspaceMode && _clusterRootIds.Length > 1)
+        {
+            // Root-only compact overviews retain real 44-DIP targets while their
+            // decorative silhouettes fit the available cluster cells.
+            factor *= Math.Clamp(Math.Min(SceneViewport.Width / 800, SceneViewport.Height / 420), 0.7, 1);
+        }
         if (isFocus) { return new Size(30 * factor, 23 * factor); }
         return node.Kind switch
         {
@@ -1123,6 +1070,28 @@ public sealed class GraphSceneControl : Control
             ExplorerNodeKind.Aggregate => new Size(10 * factor, 10 * factor),
             _ => new Size(17 * factor, 13 * factor),
         };
+    }
+
+    private double WorkspaceLabelWidth(string nodeId)
+    {
+        var count = _clusterRootIds.Length;
+        var fraction = count <= 1 ? 0.42 : count == 2 ? 0.46
+            : count == 3 ? ExplorerIdentity.Equals(nodeId, _clusterRootIds[0]) ? 0.55 : 0.35
+            : count <= 4 ? 0.455 : count <= 6 ? 0.295 : 0.215;
+        return Math.Max(56, SceneViewport.Width * 0.94 * fraction - 16);
+    }
+
+    private int CountOverlappingLabels()
+    {
+        var count = 0;
+        for (var index = 0; index < _preparedLabels.Count; index++)
+        {
+            for (var other = index + 1; other < _preparedLabels.Count; other++)
+            {
+                if (_preparedLabels[index].Candidate.Bounds.Intersects(_preparedLabels[other].Candidate.Bounds, 0)) { count++; }
+            }
+        }
+        return count;
     }
 
     private void DrawNebulaNode(
@@ -1170,7 +1139,7 @@ public sealed class GraphSceneControl : Control
                 Pen(palette.Selection, ToByte((isSelected ? 250 : 180) * opacity), isSelected ? 1.8 : 1),
                 center, width * 1.42 + 6, height * 1.42 + 6);
         }
-        if (isHighlighted)
+        if (isHighlighted && !_workspaceMode)
         {
             // Search diamond clears the whole folder rectangle, including its corners.
             var extentX = width * 2 + 7;
@@ -1191,6 +1160,37 @@ public sealed class GraphSceneControl : Control
         }
     }
 
+    private static Color PreviewAccent(ScenePalette palette) => ReferenceEquals(palette, ScenePalette.Light) ? PreviewGoldLight : PreviewGold;
+
+    private void DrawSearchAdornment(DrawingContext context, ScenePalette palette, ExplorerNode node, Point center, Size size)
+    {
+        var accent = PreviewAccent(palette);
+        if (ExplorerIdentity.Equals(node.Id, _previewNodeId))
+        {
+            var pulse = ShouldAnimateMotion && !ReducedEffects ? (Math.Sin(_motionClock.Elapsed.TotalSeconds * 2.6) + 1) / 2 : 0.5;
+            var radius = Math.Max(size.Width, size.Height) + 12 + pulse * 3;
+            if (!ReducedEffects)
+            {
+                context.DrawEllipse(FolderGlow(accent), null, center, radius + 12, radius + 12);
+                context.DrawEllipse(null, Pen(accent, 55, 1), center, radius + 7, radius + 7);
+            }
+            context.DrawEllipse(null, Pen(accent, 245, 1.4), center, radius, radius);
+        }
+        var count = _matchCounts.GetValueOrDefault(node.Id);
+        if (count <= 0 || node.Kind == ExplorerNodeKind.File || ExplorerIdentity.Equals(node.Id, _previewNodeId)) { return; }
+        var label = count > 99 ? "99+" : count.ToString(CultureInfo.InvariantCulture);
+        var key = new LabelTextKey(label, CultureInfo.InvariantCulture.Name, 11, 32, FontWeight.Bold, BadgeText);
+        var text = _textCache.GetOrAdd(key, static item => new TextLayout(item.Text,
+            new Typeface("avares://Avalonia.Fonts.Inter/Assets#Inter", FontStyle.Normal, item.Weight),
+            item.FontSize, new SolidColorBrush(item.Color), maxWidth: item.MaxWidth, maxLines: 1));
+        var badge = new Point(center.X + size.Width + 3, center.Y - size.Height + 1);
+        var badgeRadius = label.Length > 2 ? 13 : 10;
+        context.DrawEllipse(Brush(PreviewGold), Pen(palette.Background, 255, 1.5), badge, badgeRadius, 10);
+        text.Draw(context, new Point(badge.X - text.WidthIncludingTrailingWhitespace / 2, badge.Y - text.Height / 2));
+        _glyphBoxes.Add(new LabelBox(badge.X - badgeRadius - 2, badge.Y - 12, badgeRadius * 2 + 4, 24));
+        _matchBadges++;
+    }
+
     private void ResolvePreparedLabels()
     {
         _visibleLabelIds.Clear();
@@ -1203,6 +1203,69 @@ public sealed class GraphSceneControl : Control
             var placed = placements[label.Candidate.NodeId];
             _preparedLabels[index] = label with { Candidate = label.Candidate with { Bounds = placed }, Origin = new Point(placed.X, placed.Y) };
             _visibleLabelIds.Add(label.Candidate.NodeId);
+        }
+        if (_workspaceMode && CountOverlappingLabels() > 0) { RepairWorkspaceLabelCollisions(); }
+    }
+
+    private void RepairWorkspaceLabelCollisions()
+    {
+        // The general ring search samples every 18 DIP. At large text sizes a
+        // valid narrow gap can fall between samples. Try the exact boundaries
+        // of the small bounded scene before accepting a colliding placement.
+        var viewport = SceneViewport;
+        var remainingChecks = 4096;
+        var order = Enumerable.Range(0, _preparedLabels.Count)
+            .OrderBy(index => _preparedLabels[index].Candidate.Priority)
+            .ThenBy(index => _preparedLabels[index].Candidate.NodeId, ExplorerIdentity.Comparer).ToArray();
+        for (var pass = 0; pass < 2 && CountOverlappingLabels() > 0; pass++)
+        {
+            var changed = false;
+            foreach (var index in order)
+            {
+                if (remainingChecks <= 0) { break; }
+                var label = _preparedLabels[index];
+                var current = label.Candidate.Bounds;
+                if (!_preparedLabels.Where((_, other) => other != index).Any(other => current.Intersects(other.Candidate.Bounds, 0))) { continue; }
+                var obstacles = _glyphBoxes.Concat(_preparedLabels.Where((_, other) => other != index)
+                    .Select(other => other.Candidate.Bounds)).ToArray();
+                const double gap = 3.5;
+                var xs = new HashSet<double> { viewport.Left, viewport.Right - current.Width, current.X };
+                var ys = new HashSet<double> { viewport.Top, viewport.Bottom - current.Height, current.Y };
+                foreach (var obstacle in obstacles)
+                {
+                    xs.Add(Math.Clamp(obstacle.X - current.Width - gap, viewport.Left, viewport.Right - current.Width));
+                    xs.Add(Math.Clamp(obstacle.X + obstacle.Width + gap, viewport.Left, viewport.Right - current.Width));
+                    ys.Add(Math.Clamp(obstacle.Y - current.Height - gap, viewport.Top, viewport.Bottom - current.Height));
+                    ys.Add(Math.Clamp(obstacle.Y + obstacle.Height + gap, viewport.Top, viewport.Bottom - current.Height));
+                }
+                var best = current;
+                var bestDistance = double.PositiveInfinity;
+                var orderedXs = xs.OrderBy(x => Math.Abs(x - current.X)).ToArray();
+                var orderedYs = ys.OrderBy(y => Math.Abs(y - current.Y)).ToArray();
+                foreach (var x in orderedXs)
+                {
+                    if (remainingChecks <= 0 || Math.Pow(x - current.X, 2) >= bestDistance) { break; }
+                    foreach (var y in orderedYs)
+                    {
+                        var distance = Math.Pow(x - current.X, 2) + Math.Pow(y - current.Y, 2);
+                        if (remainingChecks <= 0 || distance >= bestDistance) { break; }
+                        remainingChecks--;
+                        var candidate = new LabelBox(x, y, current.Width, current.Height);
+                        var free = true;
+                        foreach (var obstacle in obstacles)
+                        {
+                            if (candidate.Intersects(obstacle, 3)) { free = false; break; }
+                        }
+                        if (!free) { continue; }
+                        best = candidate;
+                        bestDistance = distance;
+                    }
+                }
+                if (!double.IsFinite(bestDistance)) { continue; }
+                _preparedLabels[index] = label with { Candidate = label.Candidate with { Bounds = best }, Origin = new Point(best.X, best.Y) };
+                changed = true;
+            }
+            if (!changed) { break; }
         }
     }
 
@@ -1302,7 +1365,7 @@ public sealed class GraphSceneControl : Control
                 _motionClock.Elapsed.TotalSeconds,
                 influence,
                 !ShouldAnimateMotion,
-                ExplorerIdentity.Equals(pair.Key, _neighborhood?.FocusNodeId));
+                IsClusterRoot(pair.Key));
         }
 
         return _renderLayout;
@@ -1311,8 +1374,8 @@ public sealed class GraphSceneControl : Control
     private Point ToCanvas(GraphLayoutNode node)
     {
         var viewport = SceneViewport;
-        var width = viewport.Width * 0.66 * _zoom;
-        var height = viewport.Height * 0.68 * _zoom;
+        var width = viewport.Width * (_workspaceMode ? 0.94 : 0.66) * _zoom;
+        var height = viewport.Height * (_workspaceMode ? 0.94 : 0.68) * _zoom;
         return new Point(viewport.Center.X + _pan.X + (node.X * width), viewport.Center.Y + _pan.Y + (node.Y * height));
     }
 
@@ -1330,7 +1393,7 @@ public sealed class GraphSceneControl : Control
         var sceneNode = GetAutomationNode(node.NodeId)!;
         if (ActualThemeVariant != ThemeVariant.Light)
         {
-            var size = NebulaGlyphSize(sceneNode, scale, ExplorerIdentity.Equals(node.NodeId, _neighborhood!.FocusNodeId));
+            var size = NebulaGlyphSize(sceneNode, scale, IsClusterRoot(node.NodeId));
             var peripheral = GraphEdgeGeometry.PeripheralPoint(center.X, center.Y, toward.X, toward.Y, size.Width + 2, size.Height + 2);
             return new Point(peripheral.X, peripheral.Y);
         }
@@ -1368,7 +1431,7 @@ public sealed class GraphSceneControl : Control
         {
             // A star's two-hop neighbors are the whole scene. Use spatial proximity
             // instead, and keep the orientation anchor still.
-            if (ExplorerIdentity.Equals(node.NodeId, _neighborhood.FocusNodeId)) { continue; }
+            if (IsClusterRoot(node.NodeId)) { continue; }
             var distance = Math.Sqrt(Math.Pow(node.X - hovered.X, 2) + Math.Pow(node.Y - hovered.Y, 2));
             _lensInfluences[node.NodeId] = ExplorerIdentity.Equals(node.NodeId, _hoveredNodeId)
                 ? 1 : 0.22 * Math.Max(0, 1 - distance / 0.23);
@@ -1436,13 +1499,8 @@ public sealed class GraphSceneControl : Control
         var selected = _neighborhood?.Nodes.FirstOrDefault(node =>
             ExplorerIdentity.Equals(node.Id, _selectedNodeId));
         var description = selected is null
-            ? _neighborhood?.ViewMode switch
-            {
-                ExplorerViewMode.Context => "Spatial Context graph. Use arrows to select related nodes and Enter to refocus.",
-                ExplorerViewMode.Hybrid => "Spatial Hybrid graph. Structure forms the navigation skeleton and Context shows authoritative relationships. Use arrows to select nodes and Enter to refocus.",
-                _ => "Spatial folder graph. Use arrows to select nodes and Enter to activate.",
-            }
-            : $"Selected {selected.Kind}: {selected.Name}. Use Enter to activate.";
+            ? "Spatial folder workspace. Use arrows to select folders or files and Enter to open. Right-click steps back."
+            : $"Selected {selected.Kind}: {selected.Name}. Use Enter to open.";
         SetValue(AutomationProperties.HelpTextProperty, description);
     }
 

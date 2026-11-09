@@ -1,6 +1,6 @@
 # ADR 0003: Bounded actual descendant previews
 
-Status: Accepted
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 Date: 2026-09-11
 
@@ -43,6 +43,6 @@ Separate provider work limits protect foreground responsiveness independently of
 ## Evidence
 
 - Contract and admission: [`ExplorerModels.cs`](../../src/OmniBrille.Core/ExplorerModels.cs), [`GraphNeighborhoodBuilder.cs`](../../src/OmniBrille.Core/GraphNeighborhoodBuilder.cs), and [`GraphNeighborhoodBuilderTests.cs`](../../tests/OmniBrille.Tests/GraphNeighborhoodBuilderTests.cs).
-- Work and authority limits: [`FileSystemExplorerProvider.cs`](../../src/OmniBrille.Infrastructure/FileSystemExplorerProvider.cs), [`FileSystemExplorerProviderTests.cs`](../../tests/OmniBrille.Tests/FileSystemExplorerProviderTests.cs), [`OmniSorSeConnectedProvider.cs`](../../src/OmniBrille.Infrastructure/OmniSorSe/OmniSorSeConnectedProvider.cs), and [`OmniSorSeConnectedProviderTests.cs`](../../tests/OmniBrille.Tests/OmniSorSeConnectedProviderTests.cs).
-- Replacement safety and current-scene admission: [`ExplorerSession.cs`](../../src/OmniBrille.Desktop/Presentation/ExplorerSession.cs) and the bounded, full-scene, cancellation, provider-replacement, and late-preview fixtures in [`ExplorerSessionTests.cs`](../../tests/OmniBrille.Tests/ExplorerSessionTests.cs).
-- Depth, placement, and projection: [`RadialGraphLayout.cs`](../../src/OmniBrille.Core/RadialGraphLayout.cs), [`RadialGraphLayoutTests.cs`](../../tests/OmniBrille.Tests/RadialGraphLayoutTests.cs), [`ExplorerSceneSemanticsTests.cs`](../../tests/OmniBrille.Tests/ExplorerSceneSemanticsTests.cs), and [`MainWindowHeadlessTests.cs`](../../tests/OmniBrille.HeadlessTests/MainWindowHeadlessTests.cs).
+- Work and authority limits: [`FileSystemExplorerProvider.cs`](../../src/OmniBrille.Infrastructure/FileSystemExplorerProvider.cs), [`FileSystemExplorerProviderTests.cs`](../../tests/OmniBrille.Tests/FileSystemExplorerProviderTests.cs), [`OmniSorSeConnectedProvider.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/src/OmniBrille.Infrastructure/OmniSorSe/OmniSorSeConnectedProvider.cs), and [`OmniSorSeConnectedProviderTests.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/tests/OmniBrille.Tests/OmniSorSeConnectedProviderTests.cs).
+- Replacement safety and current-scene admission: [`ExplorerSession.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/src/OmniBrille.Desktop/Presentation/ExplorerSession.cs) and the bounded, full-scene, cancellation, provider-replacement, and late-preview fixtures in [`ExplorerSessionTests.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/tests/OmniBrille.Tests/ExplorerSessionTests.cs).
+- Depth, placement, and projection: [`RadialGraphLayout.cs`](../../src/OmniBrille.Core/RadialGraphLayout.cs), [`RadialGraphLayoutTests.cs`](../../tests/OmniBrille.Tests/RadialGraphLayoutTests.cs), [`ExplorerSceneSemanticsTests.cs`](../../tests/OmniBrille.Tests/ExplorerSceneSemanticsTests.cs), and [`MainWindowHeadlessTests.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/tests/OmniBrille.HeadlessTests/MainWindowHeadlessTests.cs).

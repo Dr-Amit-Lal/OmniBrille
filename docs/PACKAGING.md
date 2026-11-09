@@ -1,105 +1,39 @@
-# Windows packaging and public releases
+# Windows packaging
 
-**Custom fork:** source version is `1.2.0-nebula.3`. The historical upstream v1.2.0 package details below do not qualify this fork. Spatial Explorer is the sole startup screen. This preview includes glowing folder/document icons, a temporary hide-controls mode and a collapsible local-folder pin sidebar. Interaction-sound controls and playback are removed; the local voice-input bundle remains. The old My Files shortcut is removed during upgrade; legacy [My Files workspace data](my-files.md) is retained but is not loaded by Spatial Explorer; native Windows installer acceptance remains outstanding.
+Current source version: **`1.2.0-nebula.4`**. One per-user Windows x64 installer opens the local Spatial Explorer. Upstream v1.2.0 artifacts and earlier hosted results do not qualify these bytes.
 
-## Supported package
+## Package and installer identity
 
-OmniBrille uses pinned Inno Setup 6.7.3 for one per-user Windows x64 installer. It is a standalone-capable application and installs no OmniSorSe binary, service, startup entry, telemetry component, updater, or file association. The package includes one pinned local-only whisper.cpp runtime/model bundle so ordinary users do not need to configure executable paths.
+The pinned Inno Setup 6.7.3 build installs at `%LOCALAPPDATA%\Programs\OmniBrille`, keeps the stable application ID, and creates one **OmniBrille Spatial Explorer** Start Menu shortcut and one uninstall registration. It requests no administrator rights. The application is self-contained, non-trimmed and multi-file; no separate .NET runtime is required.
 
-```text
-%LOCALAPPDATA%\Programs\OmniBrille\OmniBrille.exe
-```
-
-The fixed application ID provides in-place upgrade, one Spatial Explorer Start Menu launcher, one uninstall registration, and standard running-application coordination without administrator rights. This path is also among the bounded locations historically used by the compatible OmniSorSe companion launcher.
-
-MSIX was not selected because its identity/signing lifecycle would raise the first-release gate without improving this current-user application. WiX/MSI is disproportionate; NSIS would duplicate lifecycle scripting already supplied by Inno Setup. Do not introduce a second package format without a new platform or lifecycle requirement.
-
-## Version and artifacts
-
-`Directory.Build.props` is the version authority for v1.2.0:
-
-- semantic/informational version: `1.2.0`;
-- assembly version: `1.2.0.0`;
-- Windows file and installer version: `1.2.0.0`.
-
-The package is self-contained, non-trimmed, multi-file, and `win-x64`. Users do not need a separate .NET runtime. The retained multi-file deployment avoids first-release risk around Avalonia XAML, reflection, and native-library loading.
-
-```text
-OmniBrille-1.2.0-win-x64-setup.exe
-OmniBrille-1.2.0-win-x64-setup.exe.sha256
-OmniBrille-1.2.0-win-x64-setup-manifest.json
-OmniBrille-1.2.0-win-x64-setup-dependencies.json
-OmniBrille-1.2.0-win-x64-setup-release-notes.md
-```
-
-The schema-5 manifest binds the installer to version, release commit, UTC build time, runtime/deployment, Explorer Protocol version, size, checksum, signing state, voice-bundle manifest hash/file inventory, and—when built in Actions—the workflow run. The dependency document is a sanitized project dependency graph; it is neither an exact packaged-file inventory nor a formal SPDX/CycloneDX SBOM. The generated notes bind the same exact artifact to its install, support, and limitation guidance. The public release also retains the hosted installed-artifact validation JSON with the matching checksum. Download the complete matching set from the [v1.2.0 release](https://github.com/nishdel/OmniBrille/releases/tag/v1.2.0).
-
-## Pinned local voice bundle
-
-`build/Get-VoiceBundle.ps1` is the sole voice-asset acquisition path. It downloads whisper.cpp v1.9.2 Windows x64 CPU archive `49DCC16DE826F20BD53D44F947A1AE49DFA81F86CAD67A64D80820CB192D674A` at commit `306c88f4d1286aec1bf96e544632897886af5501` and `ggml-base.en-q5_1.bin` `4BAF70DD0D7C4247BA2B81FAFD9C01005AC77C2F9EF064E00DCF195D0E2FDD2F` at model repository commit `c521a4b02f422512d734391fdf08bb08c0862f68`. Downloads/cache/output are restricted below ignored `artifacts`; every allowlisted extracted DLL/executable is independently hashed before publish.
-
-The installed `Voice/voice-bundle-manifest.json` records source URLs, pins, hashes, byte sizes, and `installedApplicationDownloadsAssets=false`. Package, release, and hosted artifact-only checks validate every entry, reject unexpected runtime files, require the whisper.cpp/OpenAI Whisper MIT licenses, and bind the voice manifest into the release manifest. The application repeats the runtime/model hash checks before use. Any asset update requires an explicit version/provenance/hash/license review and a new package qualification.
-
-OmniBrille project code is licensed `MIT`, recorded by `PackageLicenseExpression` and the authoritative root `LICENSE`. The release manifest records that exact expression and the source URL for its release commit. The installed application includes the project `LICENSE`, [`THIRD-PARTY-NOTICES.txt`](../THIRD-PARTY-NOTICES.txt), and complete redistributed runtime notices below `THIRD-PARTY-LICENSES`. Public release verification fails if the MIT text/metadata is absent, if a reviewed notice is missing, or if a packaged notice differs from its repository source.
-
-The Windows renderer retains Avalonia's managed SkiaSharp 3.119.4 API but excludes the official Win32 native runtime asset, which contains unused Adobe DNG/RAW code. OmniBrille instead consumes the distinctly named, repository-tracked `OmniBrille.SkiaSharp.NativeAssets.Win32.NoDng` 3.119.4.3 package. Its native DLL is built from exact upstream commits with `skia_use_dng_sdk=false`; the DNG SDK and RAW-only PIEX sources are removed before dependency sync and are neither fetched nor linked. Release validation binds the package hash and one DNG-free DLL hash through restore, publish, manifest, installation, and binary-marker checks. The project-built DLL is unsigned and is not represented as an official Microsoft-signed SkiaSharp binary. See [`native-skia.md`](native-skia.md) for authoritative provenance and upgrade procedure.
-
-## Reproducible commands
-
-From a clean Windows checkout with the SDK pinned by `global.json`:
+`Directory.Build.props` is authoritative: semantic/informational version `1.2.0-nebula.4`, assembly/file version `1.2.0.0`. The installer fallback matches it. Launch accepts `--root` and `--theme`; no handoff/runtime audio capability is packaged.
 
 ```powershell
-dotnet restore .\OmniBrille.sln
 .\build\Package-Windows.ps1 -BootstrapInnoSetup
 ```
 
-`Get-InnoSetup.ps1` downloads the official Inno Setup 6.7.3 installer below ignored `artifacts/tools`, validates its pinned SHA-256, and extracts the compiler. An existing compiler may instead be passed through `-InnoCompiler`.
+The output set uses the stem `OmniBrille-1.2.0-nebula.4-win-x64-setup`: `.exe`, `.exe.sha256`, `-manifest.json`, `-dependencies.json`, and `-release-notes.md`. Keep all files from the same build together. The generated notes bind the exact installer and incorporate [current release guidance](release-notes.md).
 
-The complete local release gate is:
+## Contents and provenance
 
-```powershell
-.\build\verify-release.ps1
-```
+Schema **6** records `productMode: local-workspace`, installer identity/hash/size/signature, source commit/URL, build time, runtime/deployment, installed notice binding and native SkiaSharp provenance. It no longer claims an Explorer Protocol or voice bundle. The dependency document is a sanitized dependency graph, not an exact packaged-file inventory or a formal SBOM.
 
-It requires a clean checkout and checks the distribution license, version consistency, stale branding, tracked-artifact hygiene, engineering-document paths/fences, restore, formatting, analyzer-enabled Release build, all tests, NuGet vulnerabilities, direct dependency updates, the Windows package, runtime contents, exact hash/manifest/notes agreement, and `git diff --check`. `-AllowDirty` exists only while developing the release machinery; it is not evidence for a publishable artifact. The script never tags, pushes, or publishes.
+The package retains the project MIT license, Avalonia/font/runtime notices and the reviewed DNG-free SkiaSharp 3.119.4 native asset. [Native Skia provenance](native-skia.md) defines its source pins, package/DLL hashes, unsigned status and exclusion checks. Do not regenerate or replace that asset as an incidental packaging change.
 
-Outputs are below ignored `artifacts/publish/win-x64` and `artifacts/packages`. The publish directory is safely recreated each time. Installer bytes are not reproducible across machines because executable, installer, and optional signing timestamps are not normalized. The checksum therefore identifies one retained artifact; never mix a sidecar, manifest, validation record, or notes file from another build.
+Voice binaries/models, NAudio and OmniSorSe protocol binaries are absent. Publish/release/lifecycle gates reject retired payloads as well as source/test files, debug symbols, databases, logs, keys and raw audio. The installed app has no service, autostart entry, updater, file association or telemetry component.
 
-## Signing
+## Upgrade and uninstall
 
-The packaging scripts support Authenticode but no production certificate is stored in the repository. When an approved certificate with a private key is present in the Windows certificate store:
+Upgrade removes the obsolete My Files shortcut. A fixed allowlist removes known retired Voice runtime/model/manifest/license files, NAudio DLLs and the protocol DLL. Each retired path and its parents through the install directory are checked for reparse points before deletion. Only empty retired directories are removed; unknown content is preserved. No recursive wildcard cleanup targets user data or saved settings.
 
-```powershell
-$env:OMNIBRILLE_SIGNING_CERTIFICATE_THUMBPRINT = '<thumbprint>'
-.\build\verify-release.ps1 -RequireSigning
-```
+Workspace/preferences remain below `%LOCALAPPDATA%\OmniBrille`, outside install ownership, and survive upgrade/uninstall. On launch the new store can migrate explicitly saved roots/pins from older settings. The old JSON files remain intact. Removing a pin/root or uninstalling never deletes its folder.
 
-The application is signed and validated before installer compilation; the installer is then signed and validated with SHA-256 and a timestamp server. Required signing fails closed for a missing, expired, private-key-less, or invalid certificate.
+The shared `build/Test-WindowsInstallerLifecycle.ps1` runs after packaging in the standard Windows CI job and in the private-preview artifact-only job. It validates installer/manifest/hash/native-notice identity, seeds known retired assets for cleanup, checks unknown-file and workspace/preference preservation, launches Spatial Explorer, closes/relaunches it, and uninstalls. These seeded files are clearly labeled a **synthetic fixture**. This is not a full previous-version upgrade test. Native in-place upgrade, reparse/unknown-content behavior and interactive usability must be recorded separately with the exact installer hash.
 
-The manual release-candidate workflow can import an externally supplied certificate from GitHub Actions secrets, exposes only the thumbprint to packaging, and removes the temporary PFX and imported certificate. Secrets never enter source, command-line arguments, logs, or artifacts.
+## Signing and verification
 
-If the maintainer explicitly approves an unsigned release, its README, GitHub Release, manifest, and generated notes must all disclose **Unknown Publisher / SmartScreen** risk. SHA-256 proves byte integrity after the user obtains the checksum from a trusted channel; it does not authenticate the publisher.
+Custom preview packages are **unsigned** unless the explicitly configured signing path is used. Windows may show Unknown Publisher or SmartScreen. SHA-256 verifies the artifact bytes; it does not authenticate an unsigned publisher. `RequireSigning` fails closed without a suitable externally supplied certificate; keys/passwords do not belong in source or artifacts.
 
-## Automation and artifact-only validation
+`build/verify-release.ps1` is the clean-checkout release gate: documentation, formatting/build/tests, dependency audit, packaging, notices, prohibited payloads, hashes, signing state and native-asset integrity. The artifact-only hosted lifecycle verifies the exact candidate, per-user install, shortcuts/registration/version, normal launch/close/relaunch and uninstall. Record outcomes instead of treating configured checks as passed results.
 
-Normal CI restores, formats, builds, tests, validates engineering-document paths/fences, audits NuGet packages on Windows and Ubuntu, and builds an unsigned Windows installer on the Windows leg.
-
-`.github/workflows/private-preview.yml` retains its historical filename but is the manual **release candidate artifact** workflow. It accepts unsigned or fail-closed signed mode. A dependent fresh hosted-Windows job receives only the candidate artifacts, independently matches the installer, sidecar, manifest, version metadata, and required signature state, performs a per-user install, launches and normally closes the installed application, relaunches it with the opposite theme, verifies Start Menu/uninstall registration, uninstalls, and retains a validation JSON record.
-
-That workflow deliberately does not create a tag or GitHub Release. Its non-interactive window check does not prove visual quality, feature interactions, assistive-technology behavior, Connected mode, upgrade, or real microphone behavior. Those claims require the applicable manual gates in [`RELEASE_CHECKLIST.md`](../RELEASE_CHECKLIST.md).
-
-## Install, upgrade, and uninstall boundaries
-
-The installer owns its application directory, Start Menu shortcut, uninstall registration, and pinned `Voice` bundle. It excludes PDB/source/test/database/key/raw-or-test-audio material, development paths, unexpected OmniSorSe binaries, and any voice file outside the reviewed allowlist.
-
-Safe UI preferences remain at `%LOCALAPPDATA%\OmniBrille\visual-preferences.json` and intentionally survive upgrade/uninstall. They may include theme, effects, diagnostics, voice enablement, and language. The retained legacy `SoundEnabled` field is normalized to `false`; old preference files cannot enable playback. The hide-controls flag and pin-sidebar collapse state are temporary UI state and are not persisted. Explicit local folder pins are stored separately at `%LOCALAPPDATA%\OmniBrille\pinned-folders.json`: schema version, up to 12 folder paths, display names and their order. This user-owned file survives upgrade and uninstall. Loading it does not open folders; pin activation revalidates a local path and explicitly selects a Standalone root. Connected node IDs and projected paths are never pin data. Earlier My Files builds stored selected local roots, labels, expanded branches, pins, and text size in `file-map-workspace.json`. That legacy file survives upgrade/uninstall but is not read by Spatial Explorer. Queries, content, audio, transcripts, grants, bearer tokens, endpoints, connected node IDs, and Context caches are not persisted. Spatial Explorer saves only roots the user explicitly pins; the current browsing root, queries and navigation history remain temporary. It does not import the legacy My Files workspace. User content and OmniSorSe state are never removed; uninstall removes installer-owned voice assets.
-
-Forward in-place upgrade is supported through the stable application ID. Packaging excludes the diagnostics-only `mscordaccore_*.dll` family even if a servicing runtime pack supplies it, and the installer narrowly removes the obsolete installer-owned copy carried by public v1.0.0; it does not broadly clear the application directory. Both the package verifier and hosted installed-artifact gate reject that family. Downgrade is neither blocked nor promised. Qualification records fresh install, upgrade from the exact public predecessor, representative Standalone interaction, normal close/relaunch, and uninstall separately. Earlier release lifecycle measurements are historical evidence, not proof for a new exact artifact. An owner-authorized release for continued manual testing may retain explicitly unverified manual checks; that publication does not qualify those behaviors.
-
-## Publication boundary
-
-The owner selects and records the project license. Independent release review then checks the exact artifact, validation record, screenshots, public claims, release notes, signing disclosure, compatibility language, and repository state. Never retag a different commit or replace an attached installer without changing the release/version and rerunning validation.
-
-For v1.2.0, the owner authorized integration and unsigned publication so the Windows installer can be used for continued manual testing. Source qualification runs on the final clean commit before normal integration/push to `main`. The annotated `v1.2.0` tag identifies that exact validated `main` commit; the public assets are then built from the tag and pass the hosted artifact-only gate before upload. The release page records commit, CI, installer hash, signing disclosure, and manual limits. Do not change the source tree, move the tag, or rebuild/replace an already validated upload set without requalification.
-
-The previous stable v1.1.0 was published unsigned from tag `v1.1.0` at commit `6a0199c70d230e5162028b860bad95d8fd12a8cb`. Its exact evidence remains in the [historical release report](runs/2026-09-04-v1.1.0-public-release.md); it does not qualify v1.2.0. The [issue audit](runs/2026-09-11-github-issue-audit.md) separately records the implementation work now included in v1.2.0.
+No nebula.4 native Windows lifecycle, visual/DPI/GPU, screen-reader or OneDrive hydration result is implied by this document. [Release checklist](../RELEASE_CHECKLIST.md) and [testing](testing.md) track the remaining evidence.

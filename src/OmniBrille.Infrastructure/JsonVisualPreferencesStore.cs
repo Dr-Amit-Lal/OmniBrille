@@ -29,7 +29,7 @@ public sealed class JsonVisualPreferencesStore : IVisualPreferencesStore
 
             var json = File.ReadAllText(_settingsPath);
             var preferences = (JsonSerializer.Deserialize<VisualPreferences>(json) ?? new VisualPreferences()).Normalize();
-            if (ContainsLegacyVoiceOverrides(json))
+            if (ContainsRetiredSettings(json))
             {
                 Save(preferences);
             }
@@ -67,11 +67,15 @@ public sealed class JsonVisualPreferencesStore : IVisualPreferencesStore
         JsonException or
         NotSupportedException;
 
-    private static bool ContainsLegacyVoiceOverrides(string json)
+    private static bool ContainsRetiredSettings(string json)
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.ValueKind == JsonValueKind.Object &&
             document.RootElement.EnumerateObject().Any(property =>
+                string.Equals(property.Name, "DiagnosticsVisible", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "SoundEnabled", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "VoiceEnabled", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "VoiceLanguage", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(property.Name, "VoiceRuntimePath", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(property.Name, "VoiceModelPath", StringComparison.OrdinalIgnoreCase));
     }

@@ -1,6 +1,6 @@
 # ADR 0004: Spatial Explorer as the sole interface
 
-Status: Accepted for the custom Nebula preview.
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 ## Decision
 

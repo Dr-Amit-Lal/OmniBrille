@@ -73,18 +73,6 @@ if ($publishedNativeHash -ne $expectedNativeHash -or
     $publishedNativeSignature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
     throw "Published DNG-free SkiaSharp native asset is not the reviewed unsigned binary: '$publishedNativeHash' / '$($publishedNativeSignature.Status)'."
 }
-$voiceBundleManifestPath = Join-Path $repositoryRoot "artifacts\publish\$RuntimeIdentifier\Voice\voice-bundle-manifest.json"
-if (-not (Test-Path -LiteralPath $voiceBundleManifestPath -PathType Leaf)) {
-    throw "The pinned voice bundle manifest was not found at '$voiceBundleManifestPath'."
-}
-$voiceBundle = Get-Content -Raw -LiteralPath $voiceBundleManifestPath | ConvertFrom-Json
-if ($voiceBundle.schemaVersion -ne 1 -or
-    $voiceBundle.runtime.version -ne 'v1.9.2' -or
-    $voiceBundle.runtime.archiveSha256 -ne '49DCC16DE826F20BD53D44F947A1AE49DFA81F86CAD67A64D80820CB192D674A' -or
-    $voiceBundle.model.sha256 -ne '4BAF70DD0D7C4247BA2B81FAFD9C01005AC77C2F9EF064E00DCF195D0E2FDD2F') {
-    throw 'The published voice bundle does not match the reviewed runtime/model pins.'
-}
-
 $workflowRunId = if ($env:GITHUB_RUN_ID -match '^\d+$') { $env:GITHUB_RUN_ID } else { $null }
 $workflowRepository = if ($env:GITHUB_REPOSITORY -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
     $env:GITHUB_REPOSITORY
@@ -103,8 +91,9 @@ $workflow = if ($null -ne $workflowRunId -and $null -ne $workflowRepository) {
 Set-Content -LiteralPath $checksumPath -Encoding Ascii -Value "$hash *$($package.Name)"
 
 $manifest = [ordered]@{
-    schemaVersion = 5
+    schemaVersion = 6
     product = 'OmniBrille'
+    productMode = 'local-workspace'
     version = $Version
     fileVersion = $NumericVersion
     projectLicenseExpression = 'MIT'
@@ -113,10 +102,6 @@ $manifest = [ordered]@{
     buildTimestampUtc = [DateTimeOffset]::UtcNow.ToString('O')
     runtimeIdentifier = $RuntimeIdentifier
     deployment = 'self-contained; non-trimmed; multi-file'
-    explorerProtocol = [ordered]@{
-        major = 1
-        minor = 0
-    }
     installer = [ordered]@{
         fileName = $package.Name
         bytes = $package.Length
@@ -145,14 +130,6 @@ $manifest = [ordered]@{
             dngSdkIncluded = $false
             provenance = 'docs/native-skia.md'
         }
-    }
-    voiceBundle = [ordered]@{
-        manifestPath = 'Voice/voice-bundle-manifest.json'
-        manifestSha256 = (Get-FileHash -LiteralPath $voiceBundleManifestPath -Algorithm SHA256).Hash.ToUpperInvariant()
-        runtime = $voiceBundle.runtime
-        model = $voiceBundle.model
-        files = $voiceBundle.files
-        installedAppDownloadsAssets = $false
     }
     publishedRuntimeBytes = $PublishedBytes
     workflow = $workflow

@@ -151,9 +151,7 @@ internal sealed class GraphNodeAutomationPeer : ControlAutomationPeer, IInvokePr
         }
 
         var action = node.IsNavigable ? "Invoke to open." : "Select to inspect details.";
-        return string.IsNullOrWhiteSpace(Relationship?.Reason)
-            ? $"{node.Path}. {action}"
-            : $"{node.Path}. Related because {Relationship.Reason}. {action}";
+        return $"{node.Path}. {action}";
     }
 
     protected override string? GetItemTypeCore() => Node?.Kind.ToString();
@@ -176,9 +174,9 @@ internal sealed class GraphNodeAutomationPeer : ControlAutomationPeer, IInvokePr
             states.Add("Aggregate");
         }
 
-        if (Relationship is not null)
+        if (_owner.GetAutomationSearchStatus(_nodeId) is { } searchStatus)
         {
-            states.Add("Contextually related");
+            states.Add(searchStatus);
         }
 
         if (_owner.IsAutomationNodeHighlighted(_nodeId))
@@ -215,8 +213,6 @@ internal sealed class GraphNodeAutomationPeer : ControlAutomationPeer, IInvokePr
     protected override void SetFocusCore() => _owner.SelectAutomationNode(_nodeId);
 
     private ExplorerNode? Node => _owner.GetAutomationNode(_nodeId);
-
-    private ExplorerRelationship? Relationship => _owner.GetAutomationRelationship(_nodeId);
 
     private static string DescribeKind(ExplorerNodeKind kind) => kind switch
     {

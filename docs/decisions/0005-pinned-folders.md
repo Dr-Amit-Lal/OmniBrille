@@ -1,6 +1,6 @@
 # ADR 0005: Explicit local folder pins
 
-Status: Accepted for the custom Nebula.3 preview.
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 ## Context
 

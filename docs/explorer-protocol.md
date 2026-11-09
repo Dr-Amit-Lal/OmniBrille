@@ -1,5 +1,6 @@
-# OmniSorSe Explorer Protocol v1 integration
+# OmniSorSe Explorer Protocol v1 integration (historical)
 
+**Superseded in 1.2.0-nebula.4.** This retained guide describes removed earlier functionality and is not a current product contract. See [the local workspace architecture](architecture.md) and [ADR 0006](decisions/0006-local-spatial-workspace.md).
 > **Authority:** current OmniBrille client, adapter, and failure boundary. The Stage 4–6 host-validation sections are historical evidence against the named external commit, not a guarantee for untested OmniSorSe versions.
 
 ## Status and authority

@@ -14,7 +14,7 @@ public sealed partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnLastWindowClose;
-            desktop.MainWindow = new MainWindow(Program.StartupRoot, Program.StartupTheme, Program.OmniSorSeHandoffEndpoint);
+            desktop.MainWindow = new MainWindow(Program.StartupRoot, Program.StartupTheme);
         }
 
         base.OnFrameworkInitializationCompleted();

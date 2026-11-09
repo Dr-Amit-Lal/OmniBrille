@@ -51,7 +51,18 @@ jobs:
         run: dotnet build OmniBrille.sln --configuration Release --no-restore
 
       - name: Test Release
+        env:
+          OMNIBRILLE_RENDER_EVIDENCE: ${{ runner.temp }}/spatial-render-evidence
         run: dotnet test OmniBrille.sln --configuration Release --no-build --no-restore --logger "console;verbosity=minimal"
+
+      - name: Retain actual interface renders
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Spatial-Explorer-renders-${{ runner.os }}
+          path: ${{ runner.temp }}/spatial-render-evidence
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Audit NuGet vulnerabilities
         shell: pwsh
@@ -61,6 +72,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: .\build\Package-Windows.ps1 -BootstrapInnoSetup
+
+      - name: Verify Windows installer lifecycle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\build\Test-WindowsInstallerLifecycle.ps1 -ArtifactDirectory artifacts/packages -ExpectedCommit $env:GITHUB_SHA
 
       - name: Retain Windows installer build artifact
         if: runner.os == 'Windows'
@@ -72,5 +88,7 @@ jobs:
             artifacts/packages/OmniBrille-*-win-x64-setup.exe.sha256
             artifacts/packages/OmniBrille-*-win-x64-setup-manifest.json
             artifacts/packages/OmniBrille-*-win-x64-setup-dependencies.json
+            artifacts/packages/OmniBrille-*-win-x64-setup-release-notes.md
+            artifacts/packages/OmniBrille-release-validation.json
           if-no-files-found: error
           retention-days: 14

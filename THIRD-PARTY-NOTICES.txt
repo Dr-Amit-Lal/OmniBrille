@@ -27,37 +27,6 @@ texts and notices are installed in THIRD-PARTY-LICENSES beside OmniBrille.exe.
 - Tmds.DBus.Protocol 0.94.1
   Project: https://github.com/tmds/Tmds.DBus
   License: MIT; see Tmds.DBus-LICENSE.txt
-- NAudio.Core 2.3.0 and NAudio.WinMM 2.3.0
-  Project: https://github.com/naudio/NAudio
-  License: MIT
-
-  Copyright 2020 Mark Heath
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
-  in the Software without restriction, including without limitation the rights
-  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
-
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  SOFTWARE.
-- whisper.cpp v1.9.2 Windows x64 CPU runtime, commit
-  306c88f4d1286aec1bf96e544632897886af5501
-  Project: https://github.com/ggml-org/whisper.cpp
-  License: MIT; see whisper.cpp-MIT.txt
-- Quantized English Whisper base model ggml-base.en-q5_1.bin, pinned from
-  ggerganov/whisper.cpp commit c521a4b02f422512d734391fdf08bb08c0862f68
-  Model architecture and original weights: https://github.com/openai/whisper
-  License: MIT; see OpenAI-Whisper-MIT.txt
 - Microsoft .NET 8 self-contained Windows runtime components
   Project: https://github.com/dotnet/runtime
   License and required notices: see DotNet-LICENSE.txt and
@@ -66,5 +35,3 @@ texts and notices are installed in THIRD-PARTY-LICENSES beside OmniBrille.exe.
   Project: https://github.com/dotnet/runtime
   License: the same MIT text in DotNet-LICENSE.txt
   Required notices: see System.IO.Pipelines-THIRD-PARTY-NOTICES.txt
-
-The pinned voice runtime and model are installed for local CPU processing. OmniBrille does not download, update, or replace those executable/model bytes while the installed app runs.

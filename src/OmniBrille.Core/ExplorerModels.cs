@@ -15,25 +15,11 @@ public enum ExplorerNodeKind
     Context,
 }
 
-public enum ExplorerProviderMode
-{
-    Standalone,
-    Connected,
-}
-
-public enum ExplorerViewMode
-{
-    Structure,
-    Context,
-    Hybrid,
-}
-
 [Flags]
 public enum ExplorerNodeRole
 {
     None = 0,
     Structural = 1,
-    Contextual = 2,
     DescendantPreview = 8,
 }
 
@@ -46,8 +32,6 @@ public enum ExplorerSceneRelation
     CurrentFocus,
     DirectChild,
     PreviousFocus,
-    Contextual,
-    StructuralAndContextual,
     Aggregate,
     Visible,
     DescendantPreview,
@@ -80,15 +64,9 @@ public static class ExplorerSceneSemantics
             return ExplorerSceneRelation.DescendantPreview;
         }
 
-        var structural = (node.Roles & ExplorerNodeRole.Structural) != 0;
-        var contextual = (node.Roles & ExplorerNodeRole.Contextual) != 0;
-        return (structural, contextual) switch
-        {
-            (true, true) => ExplorerSceneRelation.StructuralAndContextual,
-            (true, false) => ExplorerSceneRelation.DirectChild,
-            (false, true) => ExplorerSceneRelation.Contextual,
-            _ => ExplorerSceneRelation.Visible,
-        };
+        return (node.Roles & ExplorerNodeRole.Structural) != 0
+            ? ExplorerSceneRelation.DirectChild
+            : ExplorerSceneRelation.Visible;
     }
 
     public static string Describe(ExplorerNeighborhood neighborhood, ExplorerNode node) =>
@@ -97,8 +75,6 @@ public static class ExplorerSceneSemantics
             ExplorerSceneRelation.CurrentFocus => "current focus",
             ExplorerSceneRelation.DirectChild => $"direct child of {neighborhood.Focus.Name}",
             ExplorerSceneRelation.PreviousFocus => "previous focus in navigation history",
-            ExplorerSceneRelation.Contextual => $"contextually related to {neighborhood.Focus.Name}",
-            ExplorerSceneRelation.StructuralAndContextual => $"direct child of and contextually related to {neighborhood.Focus.Name}",
             ExplorerSceneRelation.Aggregate => "bounded overflow portal",
             ExplorerSceneRelation.DescendantPreview => DescribePreview(neighborhood, node),
             _ => "visible graph item",
@@ -118,23 +94,6 @@ public static class ExplorerSceneSemantics
 public enum ExplorerGraphEdgeKind
 {
     Structural,
-    Contextual,
-}
-
-public enum ExplorerRelationshipKind
-{
-    Related,
-    Topic,
-    Entity,
-    Temporal,
-    Ocr,
-    Transcript,
-}
-
-public enum ExplorerRelationshipEvidenceClass
-{
-    Deterministic,
-    Derived,
 }
 
 public enum ExplorerFailureKind
@@ -151,16 +110,6 @@ public enum AggregateActionKind
     PreviousPage,
     NextPage,
     Overview,
-}
-
-public enum ExplorerLoadState
-{
-    Idle,
-    Loading,
-    PartiallyLoaded,
-    Ready,
-    Cancelled,
-    Failed,
 }
 
 public sealed record AggregateAction(
@@ -227,21 +176,10 @@ public sealed record ExplorerNode(
         Roles: roles);
 }
 
-public sealed record ExplorerRelationship(
-    string Id,
-    string SourceId,
-    string TargetId,
-    ExplorerRelationshipKind Kind,
-    int Strength,
-    string? Reason,
-    ExplorerRelationshipEvidenceClass EvidenceClass,
-    string? Provenance);
-
 public sealed record ExplorerEdge(
     string SourceId,
     string TargetId,
-    ExplorerGraphEdgeKind Kind = ExplorerGraphEdgeKind.Structural,
-    ExplorerRelationship? Relationship = null);
+    ExplorerGraphEdgeKind Kind = ExplorerGraphEdgeKind.Structural);
 
 public sealed record ExplorerNeighborhood(
     string FocusNodeId,
@@ -251,19 +189,10 @@ public sealed record ExplorerNeighborhood(
     int HiddenChildCount,
     string? Warning = null,
     bool SourceWasTruncated = false,
-    AggregatePage? AggregatePage = null,
-    ExplorerViewMode ViewMode = ExplorerViewMode.Structure)
+    AggregatePage? AggregatePage = null)
 {
     public ExplorerNode Focus => Nodes.First(node => node.Id == FocusNodeId);
 }
-
-public sealed record ExplorerContextSnapshot(
-    ExplorerEntry Focus,
-    IReadOnlyList<ExplorerEntry> Nodes,
-    IReadOnlyList<ExplorerEdge> StructuralEdges,
-    IReadOnlyList<ExplorerRelationship> Relationships,
-    bool WasTruncated = false,
-    string? Warning = null);
 
 public sealed record ExplorerDirectoryBatch(
     ExplorerEntry Focus,
@@ -279,8 +208,7 @@ public sealed record SearchRequest(
     string RootPath,
     string Query,
     int MaxResults = 80,
-    int MaxDirectories = 500,
-    bool IncludeContext = false);
+    int MaxDirectories = 500);
 
 public sealed record ExplorerSearchHit(
     string Id,
@@ -288,9 +216,7 @@ public sealed record ExplorerSearchHit(
     string Path,
     ExplorerNodeKind Kind,
     string? NavigationTarget = null,
-    string? ParentNavigationTarget = null,
-    string? Explanation = null,
-    string? Snippet = null)
+    string? ParentNavigationTarget = null)
 {
     public string Target => NavigationTarget ?? Path;
 
@@ -309,43 +235,9 @@ public interface IExplorerProvider
 
     public string DisplayRoot => AccessRoot;
 
-    public ExplorerProviderMode Mode => ExplorerProviderMode.Standalone;
-
     public Task<ExplorerDirectorySnapshot> GetDirectoryAsync(
         string path,
         CancellationToken cancellationToken);
-}
-
-public sealed record ExplorerNodeDetails(
-    string NodeId,
-    DateTimeOffset? CreatedAt,
-    DateTimeOffset? ModifiedAt,
-    string? Summary,
-    IReadOnlyList<string> Topics,
-    IReadOnlyList<string> Entities,
-    IReadOnlyList<string> RelationshipSummaries,
-    bool IsFullyIndexed,
-    IReadOnlyDictionary<string, string> Metadata);
-
-public interface IExplorerNodeDetailsProvider
-{
-    public Task<ExplorerNodeDetails?> GetNodeDetailsAsync(
-        string nodeId,
-        CancellationToken cancellationToken);
-}
-
-public interface IExplorerContextProvider
-{
-    public Task<ExplorerContextSnapshot> GetContextAsync(
-        string nodeId,
-        CancellationToken cancellationToken);
-}
-
-public interface IExplorerProviderDiagnostics
-{
-    public void ReportStaleResponseRejected();
-
-    public bool IsProviderFailure(Exception exception) => false;
 }
 
 public interface IExplorerSearchProvider

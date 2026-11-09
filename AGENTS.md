@@ -11,9 +11,9 @@ This file applies to the whole repository. Keep it compact: architecture belongs
 
 ## Global boundaries
 
-- OmniBrille is an independent, standalone-capable application. Do not import OmniSorSe architecture or process except at the verified Explorer Protocol boundary.
-- Standalone filesystem paths and connected opaque node IDs are different authorities. Never use a projected connected path as filesystem authority or add direct-filesystem fallback to connected mode.
-- OmniBrille presents server-authored Context; it does not infer relationships, duplicate OmniSorSe intelligence, or persist connected identities.
+- OmniBrille is one local spatial workspace. Do not restore removed OmniSorSe, voice/audio, Context/Hybrid or My Files runtime surfaces without an explicit new product decision.
+- Only explicit saved roots/pins authorize local reads. Search/watch scopes remain chosen roots; an outside pin does not expand them. Preserve root confinement and cloud-placeholder versus redirection checks.
+- Search previews are transient; do not turn them into committed navigation, persisted content or an implicit index.
 - Preserve the established bounded-scene, stale-result, accessibility-projection, privacy, and provider-replacement invariants. Their authoritative locations and tests are identified by the risk guide.
 - Do not claim visual, accessibility, performance, hardware, protocol-host, or cross-platform validation that was not actually performed.
 
