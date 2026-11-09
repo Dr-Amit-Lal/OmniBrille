@@ -1,6 +1,6 @@
 # Spatial workspace glossary
 
-Current meanings for `1.2.0-nebula.4`; [architecture](architecture.md) owns behavior.
+Current meanings for `1.2.0-nebula.5`; [architecture](architecture.md) owns behavior.
 
 | Term | Meaning |
 | --- | --- |
@@ -10,9 +10,9 @@ Current meanings for `1.2.0-nebula.4`; [architecture](architecture.md) owns beha
 | Pin excursion | Browsing an outside pin with that exact folder as temporary access root, returning to the workspace at its boundary |
 | Current root/path | Authorized browsing scope and displayed containing folder, saved in workspace JSON |
 | Selected node | Visible node chosen for an action; selection alone does not launch files |
-| Preview | Temporary validated ancestor chain for a Search result; does not commit current location |
+| Preview | Temporary glow/label emphasis on a validated result or its nearest visible ancestor; scene and current location stay unchanged |
 | Back / Up | One containing-folder step toward the workspace; no chronological-history semantics |
-| Aggregate | Bounded paging/open-folder control, not a semantic grouping inferred from document contents |
+| Aggregate | Bounded previous/next-page control, not a semantic grouping inferred from document contents |
 | Operation generation | Identity used with cancellation to prevent old navigation/search/preview work replacing newer state |
 | Refresh | Bounded re-read of the visible scene and active query, triggered by user, watcher events or periodic recovery |
 | Presentation band | Visual placement/scale, never filesystem depth or authority |

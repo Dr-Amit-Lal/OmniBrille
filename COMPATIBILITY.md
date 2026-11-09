@@ -1,6 +1,6 @@
 # Compatibility
 
-Current custom preview: **1.2.0-nebula.4**. The supported package target is Windows x64; actual qualification belongs to the exact artifact's recorded checks.
+Current custom preview: **1.2.0-nebula.5**. The supported package target is Windows x64; actual qualification belongs to the exact artifact's recorded checks.
 
 | Area | Current contract / evidence limit |
 | --- | --- |
@@ -13,7 +13,7 @@ Current custom preview: **1.2.0-nebula.4**. The supported package target is Wind
 
 ## Historical upstream compatibility
 
-Everything below is retained upstream release evidence/policy, not a current nebula.4 capability or qualification claim. References to “current source” in this retained section mean the upstream source at the time of that record.
+Everything below is retained upstream release evidence/policy, not a current nebula.5 capability or qualification claim. References to “current source” in this retained section mean the upstream source at the time of that record.
 
 
 OmniBrille uses capability negotiation and Explorer Protocol major-version validation rather than requiring lockstep application versions. This matrix records tested combinations; it is not a claim about untested releases.

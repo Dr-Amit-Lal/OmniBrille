@@ -5,6 +5,20 @@ namespace OmniBrille.Tests;
 public sealed class GraphEdgeGeometryTests
 {
     [Theory]
+    [InlineData(-20, 0, 20, 0, 0.25, 0.75)]
+    [InlineData(20, 0, -20, 0, 0.25, 0.75)]
+    [InlineData(0, -20, 0, 20, 0.25, 0.75)]
+    [InlineData(-20, -20, 20, 20, 0.25, 0.75)]
+    [InlineData(0, 0, 20, 0, 0, 0.5)]
+    public void StraightEdgesCanBeClippedAroundLabelsWithoutBending(
+        double x1, double y1, double x2, double y2, double expectedStart, double expectedEnd)
+    {
+        Assert.True(GraphEdgeGeometry.TryIntersectBox(x1, y1, x2, y2, new LabelBox(-10, -10, 20, 20), out var start, out var end));
+        Assert.Equal(expectedStart, start, 8);
+        Assert.Equal(expectedEnd, end, 8);
+    }
+
+    [Theory]
     [InlineData(-20, 0, 20, 0, true)]
     [InlineData(0, -20, 0, 20, true)]
     [InlineData(-20, -20, 20, 20, true)]

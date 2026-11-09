@@ -153,7 +153,7 @@ public sealed partial class MainWindow : Window, IDisposable
             GraphScene.ScenePadding = new Thickness(left, _interfaceHidden ? 88 : 196, 36, 96);
             GraphScene.SearchActive = _searchVisible && _session.SearchQuery.Length > 0;
             GraphScene.SetWorkspaceScene(_session.Scene, _session.ClusterRootIds, _session.SelectedNodeId,
-                _session.PreviewPathNodeIds, _session.MatchCounts, _session.PreviewNodeId);
+                _session.MatchCounts, _session.PreviewNodeId);
             BreadcrumbPanel.Margin = new Thickness(left, 128, 24, 0);
             BreadcrumbPanel.MaxWidth = Math.Max(200, ClientSize.Width - left - 60);
             BreadcrumbText.Text = _session.IsOverview ? "Workspace" : Path.GetFileName(_session.State.CurrentPath) is { Length: > 0 } name ? name : _session.State.CurrentPath;

@@ -27,3 +27,7 @@ The manifest moves to schema 6 with local-workspace identity. Native Windows upg
 - [Session](../../src/OmniBrille.Desktop/Presentation/SpatialWorkspaceSession.cs)
 - [Workspace model](../../src/OmniBrille.Core/SpatialWorkspace.cs) and [store](../../src/OmniBrille.Infrastructure/JsonSpatialWorkspaceStore.cs)
 - [Current architecture](../architecture.md), [interaction contract](../interaction-state-contract.md), [packaging](../PACKAGING.md)
+
+## Nebula.5 visual refinement
+
+Search preview now marks only an existing visible node or nearest ancestor within the same root. It never expands topology. The renderer removes hover enlargement, floating positions, route glows and particles. Thin straight edges are clipped around glyphs and labels; only the local icon glow and label background respond to hover. Overview roots open directly without a synthetic Open folder node. State schema, path authorization and explicit file activation are unchanged.

@@ -20,7 +20,6 @@ public sealed class SpatialWorkspaceSession : IDisposable
     private long _workspaceVersion;
     private long _rootAdditionVersion;
     private SceneResult _baseScene = SceneResult.Empty;
-    private SceneResult _shownScene = SceneResult.Empty;
     private SceneResult _fullOverviewScene = SceneResult.Empty;
     private FileMapSearchHit? _previewHit;
     private int _pageOffset;
@@ -44,10 +43,9 @@ public sealed class SpatialWorkspaceSession : IDisposable
     public string? CurrentRoot => State.CurrentRoot;
     public string? CurrentPath => State.CurrentPath;
     public bool IsOverview => State.CurrentRoot is null;
-    public ExplorerNeighborhood? Scene => _shownScene.Scene;
-    public IReadOnlyList<string> ClusterRootIds => _shownScene.ClusterRoots;
+    public ExplorerNeighborhood? Scene => _baseScene.Scene;
+    public IReadOnlyList<string> ClusterRootIds => _baseScene.ClusterRoots;
     public IReadOnlyList<FileMapSearchHit> SearchResults { get; private set; } = [];
-    public IReadOnlySet<string> PreviewPathNodeIds { get; private set; } = new HashSet<string>(PathBoundary.Comparer);
     public IReadOnlyDictionary<string, int> MatchCounts { get; private set; } = new Dictionary<string, int>(PathBoundary.Comparer);
     public string? PreviewNodeId { get; private set; }
     public string? SelectedNodeId { get; private set; }
@@ -66,7 +64,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
         return $"{identityRoot.Length}:{identityRoot}|{identityPath}";
     }
     public ExplorerNode? NodeById(string? id) => id is null ? null : Scene?.Nodes.FirstOrDefault(node => PathBoundary.Comparer.Equals(node.Id, id));
-    public string? RootForNode(string? id) => id is not null && _shownScene.Locations.TryGetValue(id, out var location) ? location.Root : null;
+    public string? RootForNode(string? id) => id is not null && _baseScene.Locations.TryGetValue(id, out var location) ? location.Root : null;
 
     public void SetOverviewChildLimit(int limit)
     {
@@ -75,7 +73,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
         _overviewChildLimit = limit;
         if (!IsOverview) { return; }
         _baseScene = LimitOverview(_fullOverviewScene);
-        if (_previewHit is null) { _shownScene = _baseScene; }
+        if (PreviewNodeId is not null && _previewHit is { } hit) { PreviewNodeId = FindVisiblePreviewNode(hit); }
         RecountMatches();
         Notify();
     }
@@ -88,7 +86,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
         if (IsOverview || _baseScene.FocusedSnapshot is not { } snapshot || State.CurrentRoot is not { } root || State.CurrentPath is not { } path) { return; }
         _baseScene = BuildFocusedScene(root, path, snapshot, _pageOffset, NodeById(SelectedNodeId)?.Path);
         _pageOffset = _baseScene.Scene!.AggregatePage!.Offset;
-        if (_previewHit is null) { _shownScene = _baseScene; }
+        if (PreviewNodeId is not null && _previewHit is { } hit) { PreviewNodeId = FindVisiblePreviewNode(hit); }
         RecountMatches();
         Notify();
     }
@@ -175,10 +173,10 @@ public sealed class SpatialWorkspaceSession : IDisposable
 
     public async Task NavigateAsync(string nodeId)
     {
-        if (_disposed || !_shownScene.Locations.TryGetValue(nodeId, out var location)) { return; }
+        if (_disposed || !_baseScene.Locations.TryGetValue(nodeId, out var location)) { return; }
         var node = NodeById(nodeId);
         if (node is null) { return; }
-        if (_shownScene.Pages.TryGetValue(nodeId, out var page))
+        if (_baseScene.Pages.TryGetValue(nodeId, out var page))
         {
             await LoadSceneAsync(State with { CurrentRoot = location.Root, CurrentPath = location.Path }, pageOffset: page);
         }
@@ -269,7 +267,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
             if (next.CurrentRoot is not null && committed.CurrentRoot is null) { return; }
             State = committed;
             if (IsOverview) { _fullOverviewScene = result; result = LimitOverview(result); }
-            _baseScene = _shownScene = result;
+            _baseScene = result;
             _pageOffset = result.Scene?.AggregatePage?.Offset ?? 0;
             SelectedNodeId = selectedPath is null ? null : result.Scene?.Nodes.FirstOrDefault(node => PathBoundary.Comparer.Equals(node.Path, selectedPath))?.Id;
             if (persist) { Save(); }
@@ -356,36 +354,13 @@ public sealed class SpatialWorkspaceSession : IDisposable
         var navigationVersion = _navigationVersion;
         try
         {
-            var chain = await Task.Run(() => BuildPreviewChain(hit, token), token);
+            var available = await Task.Run(() => FileMapPathGuard.IsOrdinaryPath(hit.RootPath, hit.Path,
+                requireDirectory: hit.Kind == ExplorerNodeKind.Folder), token);
             if (_disposed || token.IsCancellationRequested || version != _previewVersion || workspaceVersion != _workspaceVersion || navigationVersion != _navigationVersion) { return; }
-            if (chain.Count == 0) { Notify(); return; }
-            if (State.CurrentPath is { } currentPath && PathBoundary.Comparer.Equals(State.CurrentRoot, hit.RootPath))
-            {
-                var focusIndex = chain.FindIndex(node => PathBoundary.Comparer.Equals(node.Path, currentPath));
-                if (focusIndex > 0) { chain = chain.Skip(focusIndex).ToList(); }
-            }
-            var nodes = chain.ToList();
-            var ids = new HashSet<string>(nodes.Select(node => node.Id), PathBoundary.Comparer);
-            var baseFocus = _baseScene.Scene?.Focus;
-            if (baseFocus is not null && ids.Add(baseFocus.Id) && nodes.Count < MaximumSceneNodes) { nodes.Add(baseFocus); }
-            foreach (var node in _baseScene.Scene?.Nodes ?? [])
-            {
-                if (nodes.Count == MaximumSceneNodes) { break; }
-                if (ids.Add(node.Id)) { nodes.Add(node); }
-            }
-            var edges = new List<ExplorerEdge>();
-            for (var index = 1; index < chain.Count; index++) { edges.Add(new ExplorerEdge(chain[index - 1].Id, chain[index].Id)); }
-            foreach (var edge in _baseScene.Scene?.Edges ?? [])
-            {
-                if (ids.Contains(edge.SourceId) && ids.Contains(edge.TargetId) && !edges.Any(existing => existing.SourceId == edge.SourceId && existing.TargetId == edge.TargetId)) { edges.Add(edge); }
-            }
-            var locations = new Dictionary<string, Location>(_baseScene.Locations, PathBoundary.Comparer);
-            foreach (var node in chain) { locations[node.Id] = new Location(hit.RootPath, node.Path); }
-            var clusterRoots = _baseScene.ClusterRoots.Where(ids.Contains).Append(chain[0].Id).Distinct(PathBoundary.Comparer).ToArray();
-            var focus = baseFocus is not null && ids.Contains(baseFocus.Id) ? baseFocus.Id : chain[0].Id;
-            _shownScene = new SceneResult(new ExplorerNeighborhood(focus, nodes, edges, nodes.Count - clusterRoots.Length, 0), clusterRoots, locations, _baseScene.Pages);
-            PreviewPathNodeIds = new HashSet<string>(chain.Select(node => node.Id), PathBoundary.Comparer);
-            PreviewNodeId = chain[^1].Id;
+            if (!available) { Notify(); return; }
+            // Hover never adds a branch or moves the map. Locate the result's
+            // closest visible ancestor inside the same explicitly chosen root.
+            PreviewNodeId = FindVisiblePreviewNode(hit);
             RecountMatches();
             Notify();
         }
@@ -478,7 +453,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
 
     public async Task OpenSelectedAsync()
     {
-        if (_disposed || SelectedNodeId is not { } id || NodeById(id) is not { } node || !_shownScene.Locations.TryGetValue(id, out var location)) { return; }
+        if (_disposed || SelectedNodeId is not { } id || NodeById(id) is not { } node || !_baseScene.Locations.TryGetValue(id, out var location)) { return; }
         if (node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.Aggregate) { await NavigateAsync(id); return; }
         var version = _workspaceVersion;
         if (node.Kind != ExplorerNodeKind.File || !IsAuthorizedRoot(location.Root) || !await Task.Run(() => FileMapPathGuard.IsOrdinaryPath(location.Root, location.Path, requireDirectory: false)))
@@ -532,7 +507,6 @@ public sealed class SpatialWorkspaceSession : IDisposable
             total += snapshot.TotalChildCount ?? children.Count;
             hidden += Math.Max(0, (snapshot.TotalChildCount ?? children.Count) - visible.Length);
             truncated |= snapshot.WasTruncated;
-            if (children.Count > visible.Length) { AddPageNode(root.Path, path, focus.Id, "Open folder", 0, children.Count - visible.Length, nodes, edges, locations, pages); }
         }
         var warning = warnings.Count == 0 ? null : string.Join(" · ", warnings.Distinct(StringComparer.Ordinal).Take(3));
         if (truncated) { warning = (warning is null ? string.Empty : warning + " · ") + "Only the first 5,000 entries are loaded; use search to locate other items."; }
@@ -621,12 +595,6 @@ public sealed class SpatialWorkspaceSession : IDisposable
             var childIds = scene.Edges.Where(edge => edge.SourceId == rootId).Select(edge => edge.TargetId).ToHashSet(PathBoundary.Comparer);
             var children = scene.Nodes.Where(node => childIds.Contains(node.Id) && node.Kind != ExplorerNodeKind.Aggregate).ToArray();
             foreach (var child in children.Take(_overviewChildLimit)) { nodes.Add(child); edges.Add(new ExplorerEdge(rootId, child.Id)); }
-            var aggregate = scene.Nodes.FirstOrDefault(node => childIds.Contains(node.Id) && node.Kind == ExplorerNodeKind.Aggregate);
-            var hidden = Math.Max(0, children.Length - _overviewChildLimit) + (aggregate?.AggregatedItemCount ?? 0);
-            if (hidden > 0 && locations.TryGetValue(rootId, out var location))
-            {
-                AddPageNode(location.Root, location.Path, rootId, "Open folder", 0, hidden, nodes, edges, locations, pages);
-            }
         }
         return source with
         {
@@ -658,24 +626,13 @@ public sealed class SpatialWorkspaceSession : IDisposable
         pages[id] = offset;
     }
 
-    private static List<ExplorerNode> BuildPreviewChain(FileMapSearchHit hit, CancellationToken token)
-    {
-        var paths = new List<string>();
-        string? path = hit.Path;
-        while (path is not null && FileMapWorkspace.IsWithin(hit.RootPath, path))
-        {
-            token.ThrowIfCancellationRequested();
-            paths.Add(path);
-            if (paths.Count > MaximumSceneNodes - 1) { return []; }
-            if (PathBoundary.Comparer.Equals(path, hit.RootPath)) { break; }
-            path = Path.GetDirectoryName(path);
-        }
-        if (paths.Count == 0 || !PathBoundary.Comparer.Equals(paths[^1], hit.RootPath) ||
-            !FileMapPathGuard.IsOrdinaryPath(hit.RootPath, hit.Path, requireDirectory: hit.Kind == ExplorerNodeKind.Folder)) { return []; }
-        paths.Reverse();
-        return paths.Select((item, index) => new ExplorerNode(Key(hit.RootPath, item), NameOf(item), item,
-            index == paths.Count - 1 ? hit.Kind : ExplorerNodeKind.Folder, null, null, true, Roles: ExplorerNodeRole.Structural)).ToList();
-    }
+    private string? FindVisiblePreviewNode(FileMapSearchHit hit) =>
+        _baseScene.Scene?.Nodes
+                .Where(node => node.Kind is ExplorerNodeKind.Folder or ExplorerNodeKind.File &&
+                    _baseScene.Locations.TryGetValue(node.Id, out var location) &&
+                    PathBoundary.Comparer.Equals(location.Root, hit.RootPath) &&
+                    FileMapWorkspace.IsWithin(node.Path, hit.Path))
+                .OrderByDescending(node => node.Path.Length).Select(node => node.Id).FirstOrDefault();
 
     private bool IsSearchHitAuthorized(FileMapSearchHit hit) => State.Roots.Any(root => PathBoundary.Comparer.Equals(root.Path, hit.RootPath)) &&
         FileMapWorkspace.TryNormalizePath(hit.Path, out var path) && FileMapWorkspace.IsWithin(hit.RootPath, path) &&
@@ -690,8 +647,6 @@ public sealed class SpatialWorkspaceSession : IDisposable
         _previewVersion++;
         _previewHit = null;
         PreviewNodeId = null;
-        PreviewPathNodeIds = new HashSet<string>(PathBoundary.Comparer);
-        _shownScene = _baseScene;
     }
 
     private void RecountMatches()
@@ -699,7 +654,7 @@ public sealed class SpatialWorkspaceSession : IDisposable
         var counts = new Dictionary<string, int>(PathBoundary.Comparer);
         foreach (var node in Scene?.Nodes ?? [])
         {
-            if (!_shownScene.Locations.TryGetValue(node.Id, out var location) || node.Kind == ExplorerNodeKind.Aggregate) { continue; }
+            if (!_baseScene.Locations.TryGetValue(node.Id, out var location) || node.Kind == ExplorerNodeKind.Aggregate) { continue; }
             var count = SearchResults.Count(hit => PathBoundary.Comparer.Equals(hit.RootPath, location.Root) && FileMapWorkspace.IsWithin(node.Path, hit.Path));
             if (count > 0) { counts[node.Id] = count; }
         }

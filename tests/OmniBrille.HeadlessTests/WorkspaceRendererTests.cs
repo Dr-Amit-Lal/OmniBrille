@@ -3,6 +3,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Styling;
 using OmniBrille.Core;
 using OmniBrille.Desktop.Rendering;
@@ -54,66 +55,14 @@ public sealed class WorkspaceRendererTests
         }
     }
 
-    [AvaloniaFact]
-    public void PreviewAddsOnlyRealPathEdgesAndBadgesWithoutSelectionOrZoomChanges()
+    [AvaloniaTheory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task HoverKeepsGlyphsLabelsAndConnectionsStillAndOnlyMarksOneFolder(bool light, bool reducedEffects)
     {
         var scene = CreateScene();
-        var graph = new GraphSceneControl { ReducedMotion = true, ScenePadding = new Thickness(40) };
-        var window = new Window { Content = graph, Width = 1280, Height = 800, RequestedThemeVariant = ThemeVariant.Dark };
-        window.Show();
-        try
-        {
-            var selectedEvents = 0;
-            var activatedEvents = 0;
-            graph.NodeSelected += (_, _) => selectedEvents++;
-            graph.NodeActivated += (_, _) => activatedEvents++;
-            graph.SetWorkspaceScene(scene, Roots, "courses", null, null, null);
-            graph.ZoomIn();
-            var zoom = graph.Diagnostics.Zoom;
-            using (window.CaptureRenderedFrame()) { }
-            var graphPeer = ControlAutomationPeer.CreatePeerForElement(graph);
-            var before = graphPeer.GetChildren().ToDictionary(peer => peer.GetAutomationId()!, peer => peer.GetBoundingRectangle());
-            var expanded = WithPreview(scene);
-            graph.SetWorkspaceScene(expanded, Roots, "courses", PathIds,
-                new Dictionary<string, int> { ["letters"] = 3, ["projects"] = 2 }, "letter");
-            using (window.CaptureRenderedFrame()) { }
-            Assert.Equal(3, graph.Diagnostics.PreviewEdges);
-            Assert.Equal(2, graph.Diagnostics.MatchBadges);
-            Assert.Equal(0, graph.Diagnostics.PreviewParticles);
-            Assert.Equal(zoom, graph.Diagnostics.Zoom);
-            Assert.Equal(0, selectedEvents);
-            Assert.Equal(0, activatedEvents);
-            var peers = graphPeer.GetChildren();
-            Assert.All(peers, peer =>
-            {
-                var bounds = peer.GetBoundingRectangle();
-                Assert.True(bounds.Width >= 44 && bounds.Height >= 44);
-                if (before.TryGetValue(peer.GetAutomationId()!, out var previous))
-                {
-                    Assert.Equal(previous.Center, bounds.Center);
-                }
-            });
-            Assert.Equal(3, peers.Count(peer => peer.GetName()!.Contains("workspace folder", StringComparison.Ordinal)));
-            Assert.Contains(peers, peer => peer.GetItemStatus()!.Contains("Search result preview", StringComparison.Ordinal));
-            Assert.Contains(peers, peer => peer.GetItemStatus()!.Contains("2 search matches inside", StringComparison.Ordinal));
-
-            graph.SetWorkspaceScene(scene, Roots, "courses", null, null, null);
-            using (window.CaptureRenderedFrame()) { }
-            Assert.Equal(0, graph.Diagnostics.PreviewEdges);
-            Assert.Equal(0, graph.Diagnostics.MatchBadges);
-            Assert.Equal(zoom, graph.Diagnostics.Zoom);
-            graph.ResetView();
-            Assert.Equal(1, graph.Diagnostics.Zoom);
-        }
-        finally { window.Close(); }
-    }
-
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PreviewDustStopsWhenInactiveAndCachesStayBounded(bool light)
-    {
-        var graph = new GraphSceneControl { ScenePadding = new Thickness(40) };
+        var graph = new GraphSceneControl { ScenePadding = new Thickness(40), ReducedEffects = reducedEffects };
         var window = new Window
         {
             Content = graph,
@@ -124,57 +73,48 @@ public sealed class WorkspaceRendererTests
         window.Show();
         try
         {
-            graph.SetWorkspaceScene(WithPreview(CreateScene()), Roots, null, PathIds,
-                new Dictionary<string, int> { ["letters"] = 3 }, "letter");
+            var selectedEvents = 0;
+            var activatedEvents = 0;
+            graph.NodeSelected += (_, _) => selectedEvents++;
+            graph.NodeActivated += (_, _) => activatedEvents++;
+            var counts = new Dictionary<string, int> { ["letters"] = 3, ["projects"] = 2 };
+            graph.SetWorkspaceScene(scene, Roots, "courses", counts, null);
             using (window.CaptureRenderedFrame()) { }
-            Assert.Equal(3, graph.Diagnostics.PreviewEdges);
-            Assert.Equal(9, graph.Diagnostics.PreviewParticles);
+            var peer = ControlAutomationPeer.CreatePeerForElement(graph);
+            var before = peer.GetChildren().ToDictionary(node => node.GetAutomationId()!, node => node.GetBoundingRectangle());
+            var segments = graph.Diagnostics.ConnectionSegments;
+            var zoom = graph.Diagnostics.Zoom;
+            var target = peer.GetChildren().Single(node => node.GetName()!.StartsWith("Letters", StringComparison.Ordinal));
+            var point = target.GetBoundingRectangle().Center;
+            window.MouseMove(window.PointToClient(new PixelPoint((int)point.X, (int)point.Y)));
+            await Task.Delay(220);
+            using (window.CaptureRenderedFrame()) { }
+            Assert.Equal(1, graph.Diagnostics.HoverHighlights);
+            Assert.Equal(segments, graph.Diagnostics.ConnectionSegments);
+            Assert.All(peer.GetChildren(), node => Assert.Equal(before[node.GetAutomationId()!], node.GetBoundingRectangle()));
+            window.MouseMove(new Point(2, 2));
+            graph.SetWorkspaceScene(scene, Roots, "courses", counts, "letters");
+            using (window.CaptureRenderedFrame()) { }
+            Assert.Equal(1, graph.Diagnostics.HoverHighlights);
+            Assert.Equal(2, graph.Diagnostics.MatchBadges);
+            Assert.Equal(segments, graph.Diagnostics.ConnectionSegments);
+            Assert.Equal(zoom, graph.Diagnostics.Zoom);
+            Assert.Equal(0, selectedEvents);
+            Assert.Equal(0, activatedEvents);
+            Assert.All(peer.GetChildren(), node => Assert.Equal(before[node.GetAutomationId()!], node.GetBoundingRectangle()));
+            Assert.Contains(peer.GetChildren(), node => node.GetItemStatus()!.Contains("Search result location", StringComparison.Ordinal));
+            Assert.DoesNotContain(peer.GetChildren(), node => node.GetItemStatus()!.Contains("Search match", StringComparison.Ordinal));
             for (var index = 0; index < 24; index++) { using (window.CaptureRenderedFrame()) { } }
             Assert.InRange(graph.Diagnostics.TextCacheEntries, 0, 256);
             Assert.InRange(graph.Diagnostics.ResourceCacheEntries, 0, 576);
             graph.SetMotionActivity(false);
             using (window.CaptureRenderedFrame()) { }
-            Assert.Equal(0, graph.Diagnostics.PreviewParticles);
-            Assert.Equal(3, graph.Diagnostics.PreviewEdges);
             Assert.False(graph.Diagnostics.MotionActive);
-        }
-        finally { window.Close(); }
-    }
-
-    [AvaloniaFact]
-    public void PreviewFromAnotherRootKeepsCurrentTreeAnchoredAndRestoresIt()
-    {
-        var graph = new GraphSceneControl { ReducedMotion = true, ScenePadding = new Thickness(40) };
-        var window = new Window { Content = graph, Width = 1280, Height = 800 };
-        window.Show();
-        try
-        {
-            var nodes = new[] { Folder("documents"), Folder("teaching"), Folder("letters") };
-            ExplorerEdge[] edges = [new("documents", "teaching"), new("teaching", "letters")];
-            var scene = new ExplorerNeighborhood("documents", nodes, edges, 2, 0);
-            graph.SetWorkspaceScene(scene, ["documents"], null, null, null, null);
+            Assert.Equal(1, graph.Diagnostics.HoverHighlights);
+            graph.SetWorkspaceScene(scene, Roots, "courses", counts, null);
             using (window.CaptureRenderedFrame()) { }
-            var peer = ControlAutomationPeer.CreatePeerForElement(graph);
-            var before = peer.GetChildren().ToDictionary(node => node.GetAutomationId()!, node => node.GetBoundingRectangle().Center);
-            foreach (var otherRoot in new[] { "projects", "pictures" })
-            {
-                var overlay = scene with
-                {
-                    Nodes = [.. nodes, Folder(otherRoot), Folder(otherRoot + "/match")],
-                    Edges = [.. edges, new(otherRoot, otherRoot + "/match")],
-                };
-                graph.SetWorkspaceScene(overlay, ["documents", otherRoot], null,
-                    new HashSet<string>([otherRoot, otherRoot + "/match"], ExplorerIdentity.Comparer), null, otherRoot + "/match");
-                using (window.CaptureRenderedFrame()) { }
-                foreach (var node in peer.GetChildren())
-                {
-                    if (before.TryGetValue(node.GetAutomationId()!, out var center)) { Assert.Equal(center, node.GetBoundingRectangle().Center); }
-                }
-                Assert.Equal(1, graph.Diagnostics.PreviewEdges);
-            }
-            graph.SetWorkspaceScene(scene, ["documents"], null, null, null, null);
-            using (window.CaptureRenderedFrame()) { }
-            Assert.All(peer.GetChildren(), node => Assert.Equal(before[node.GetAutomationId()!], node.GetBoundingRectangle().Center));
+            Assert.Equal(0, graph.Diagnostics.HoverHighlights);
+            Assert.Equal(segments, graph.Diagnostics.ConnectionSegments);
         }
         finally { window.Close(); }
     }
@@ -190,10 +130,9 @@ public sealed class WorkspaceRendererTests
         try
         {
             var scene = CreateScene();
-            graph.SetWorkspaceScene(preview ? WithPreview(scene) : scene, Roots, null,
-                preview ? PathIds : null,
+            graph.SetWorkspaceScene(scene, Roots, null,
                 preview ? new Dictionary<string, int> { ["letters"] = 3, ["research"] = 1, ["projects"] = 2 } : null,
-                preview ? "letter" : null);
+                preview ? "letters" : null);
             using var frame = window.CaptureRenderedFrame();
             Assert.Equal(graph.Diagnostics.Nodes, graph.Diagnostics.Labels);
             var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
@@ -202,6 +141,38 @@ public sealed class WorkspaceRendererTests
                 Directory.CreateDirectory(output);
                 Assert.NotNull(frame);
                 frame.Save(Path.Combine(output, preview ? "workspace-preview-graph.png" : "workspace-overview-graph.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RenderCalmSingleFolderWithEveryItemAndLocalHover(bool hover)
+    {
+        string[] names = ["Adobe", "Amit Lal Workspace", "Archive", "Camtasia", "ChatGPT", "Custom Office Templates",
+            "Fall 2026", "GitHub", "HOA", "OneNote Notebooks", "Organization Records", "Personal", "Pivot Path Website",
+            "PivotPath", "PowerShell", "PowerToys", "Research", "Snagit", "Software Projects", "Teaching", "To Sort", "Visual Studio 2022", "Zoom"];
+        var scene = new ExplorerNeighborhood("Documents", names.Prepend("Documents").Select(Folder).ToArray(),
+            names.Select(name => new ExplorerEdge("Documents", name)).ToArray(), names.Length, 0);
+        var graph = new GraphSceneControl { ReducedMotion = true, ScenePadding = new Thickness(50) };
+        var window = new Window { Content = graph, Width = 1400, Height = 900, RequestedThemeVariant = ThemeVariant.Dark };
+        window.Show();
+        try
+        {
+            graph.SetWorkspaceScene(scene, ["Documents"], null, null, hover ? "HOA" : null);
+            using var frame = window.CaptureRenderedFrame();
+            Assert.Equal(24, graph.Diagnostics.Nodes);
+            Assert.Equal(24, graph.Diagnostics.Labels);
+            Assert.Equal(0, graph.Diagnostics.OverlappingLabelPairs);
+            Assert.Equal(hover ? 1 : 0, graph.Diagnostics.HoverHighlights);
+            var output = Environment.GetEnvironmentVariable("OMNIBRILLE_RENDER_EVIDENCE");
+            if (!string.IsNullOrEmpty(output))
+            {
+                Directory.CreateDirectory(output);
+                Assert.NotNull(frame);
+                frame.Save(Path.Combine(output, hover ? "calm-folder-hover.png" : "calm-folder-rest.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
         }
         finally { window.Close(); }
@@ -219,7 +190,7 @@ public sealed class WorkspaceRendererTests
         window.Show();
         try
         {
-            graph.SetWorkspaceScene(scene, roots, null, null, null, null);
+            graph.SetWorkspaceScene(scene, roots, null, null, null);
             using var frame = window.CaptureRenderedFrame();
             Assert.Equal(8, graph.Diagnostics.Labels);
             Assert.Equal(0, graph.Diagnostics.OverlappingLabelPairs);
@@ -242,7 +213,6 @@ public sealed class WorkspaceRendererTests
     }
 
     private static readonly string[] Roots = ["documents", "projects", "pictures"];
-    private static readonly HashSet<string> PathIds = new(["documents", "teaching", "letters", "letter"], ExplorerIdentity.Comparer);
 
     private static ExplorerNeighborhood CreateScene()
     {
@@ -293,7 +263,7 @@ public sealed class WorkspaceRendererTests
                 var next = root + "|page:4";
                 nodes.Add(new(next, "Next items", root, ExplorerNodeKind.Aggregate, null, null, true));
                 edges.Add(new(root, next));
-                graph.SetWorkspaceScene(new(root, nodes, edges, 48, 44), [root], null, null, null, null);
+                graph.SetWorkspaceScene(new(root, nodes, edges, 48, 44), [root], null, null, null);
                 using (window.CaptureRenderedFrame()) { }
                 Assert.True(graph.Diagnostics.OverlappingLabelPairs == 0, $"Identity ordering {seed} produced overlapping labels.");
                 Assert.Equal(6, graph.Diagnostics.Labels);
@@ -313,7 +283,7 @@ public sealed class WorkspaceRendererTests
             (byte[]? Pixels, string? Name, Rect Bounds) Capture(string id, string path)
             {
                 var node = Folder(id) with { Name = "Documents", Path = path };
-                graph.SetWorkspaceScene(new(id, [node], [], 0, 0), [id], null, null, null, null);
+                graph.SetWorkspaceScene(new(id, [node], [], 0, 0), [id], null, null, null);
                 using var frame = window.CaptureRenderedFrame();
                 Assert.Equal(1, graph.Diagnostics.Nodes);
                 Assert.Equal(1, graph.Diagnostics.Labels);

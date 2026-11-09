@@ -132,7 +132,7 @@ public sealed class SpatialWorkspaceTests
     }
 
     [Fact]
-    public async Task SearchIncludesAllRoots_HoverRevealsActualChainWithoutSavingOrMoving()
+    public async Task SearchIncludesAllRoots_HoverMarksNearestVisibleAncestorWithoutChangingScene()
     {
         using var files = new WorkspaceFiles();
         var a = files.Directory("A");
@@ -155,20 +155,56 @@ public sealed class SpatialWorkspaceTests
         Assert.True(session.IsOverview);
         Assert.Equal(writes, store.Writes);
         Assert.Equal(selection, session.SelectedNodeId);
-        Assert.Equal(target, session.NodeById(session.PreviewNodeId)!.Path);
-        Assert.Equal(4, session.PreviewPathNodeIds.Count);
+        Assert.Equal(Path.Combine(b, "Nested"), session.NodeById(session.PreviewNodeId)!.Path);
+        Assert.Same(before, session.Scene);
         foreach (var edge in session.Scene!.Edges)
         {
             var child = session.NodeById(edge.TargetId)!;
             var parent = session.NodeById(edge.SourceId)!;
             if (child.Kind != ExplorerNodeKind.Aggregate) { Assert.Equal(parent.Path, Path.GetDirectoryName(child.Path)); }
         }
+        session.SetOverviewChildLimit(0);
+        Assert.Equal(2, session.Scene!.Nodes.Count);
+        Assert.Equal(b, session.NodeById(session.PreviewNodeId)!.Path);
+        session.SetOverviewChildLimit(6);
+        Assert.Equal(Path.Combine(b, "Nested"), session.NodeById(session.PreviewNodeId)!.Path);
         await session.PreviewSearchHitAsync(null);
         Assert.Same(before, session.Scene);
-        Assert.Empty(session.PreviewPathNodeIds);
+        Assert.Null(session.PreviewNodeId);
         await session.ActivateSearchHitAsync(hit);
         Assert.Equal(Path.GetDirectoryName(target), session.CurrentPath);
         Assert.Equal(target, session.NodeById(session.SelectedNodeId)!.Path);
+    }
+
+    [Fact]
+    public async Task SearchHoverDoesNotAddAnotherRootOrRevealRemovedOrUnavailableItems()
+    {
+        using var files = new WorkspaceFiles();
+        var a = files.Directory("A");
+        var b = files.Directory("B");
+        var target = Path.Combine(b, "needle.txt");
+        File.WriteAllText(target, "");
+        using var session = new SpatialWorkspaceSession(new MemoryStore(new SpatialWorkspace([new(a, "A"), new(b, "B")], [])));
+        await session.InitializeAsync();
+        await session.OpenRootAsync(a);
+        await session.SearchAsync("needle");
+        var hit = Assert.Single(session.SearchResults);
+        var scene = session.Scene;
+        await session.PreviewSearchHitAsync(hit);
+        Assert.Same(scene, session.Scene);
+        Assert.Null(session.PreviewNodeId);
+        Assert.Equal(a, session.CurrentPath);
+        await session.ShowWorkspaceAsync();
+        await session.PreviewSearchHitAsync(hit);
+        Assert.Equal(target, session.NodeById(session.PreviewNodeId)!.Path);
+        File.Delete(target);
+        await session.PreviewSearchHitAsync(hit);
+        Assert.Null(session.PreviewNodeId);
+        session.RemoveRoot(b);
+        await session.PreviewSearchHitAsync(hit);
+        Assert.Null(session.PreviewNodeId);
+        await session.ShowWorkspaceAsync();
+        Assert.DoesNotContain(session.Scene!.Nodes, node => node.Path == b || node.Path == target);
     }
 
     [Fact]
@@ -186,7 +222,8 @@ public sealed class SpatialWorkspaceTests
         session.SetOverviewChildLimit(0);
         Assert.Single(session.Scene!.Nodes);
         session.SetOverviewChildLimit(2);
-        Assert.Equal(4, session.Scene!.Nodes.Count);
+        Assert.Equal(3, session.Scene!.Nodes.Count);
+        Assert.DoesNotContain(session.Scene.Nodes, node => node.Kind == ExplorerNodeKind.Aggregate);
         Assert.Equal(reads, provider.Reads);
         Assert.Equal(writes, store.Writes);
         await session.NavigateAsync(session.ClusterRootIds[0]);
@@ -200,6 +237,15 @@ public sealed class SpatialWorkspaceTests
             await session.NavigateAsync(next.Id);
         }
         Assert.Equal(125, reached.Count);
+        await session.OpenRootAsync(root);
+        await session.SearchAsync("File-010");
+        await session.PreviewSearchHitAsync(Assert.Single(session.SearchResults));
+        Assert.Equal(Path.Combine(root, "File-010.txt"), session.NodeById(session.PreviewNodeId)!.Path);
+        var focusedReads = provider.Reads;
+        session.SetFocusedPageSize(4);
+        Assert.Equal(6, session.Scene!.Nodes.Count);
+        Assert.Equal(root, session.NodeById(session.PreviewNodeId)!.Path);
+        Assert.Equal(focusedReads, provider.Reads);
     }
 
     [Fact]
@@ -323,7 +369,7 @@ public sealed class SpatialWorkspaceTests
         var focus = session.Scene!.FocusNodeId;
         await session.PreviewSearchHitAsync(Assert.Single(session.SearchResults));
         Assert.Equal(focus, Assert.Single(session.ClusterRootIds));
-        Assert.Equal(3, session.PreviewPathNodeIds.Count);
+        Assert.Equal(nested, session.NodeById(session.PreviewNodeId)!.Path);
         Assert.Equal(child, session.CurrentPath);
     }
 

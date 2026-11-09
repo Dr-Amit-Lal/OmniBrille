@@ -1,6 +1,6 @@
 # Spatial workspace architecture
 
-Current contract: **`1.2.0-nebula.4`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
+Current contract: **`1.2.0-nebula.5`**, one local-only `MainWindow`. The former My Files window, `ExplorerSession`, voice/audio, OmniSorSe transport, Context/Hybrid builders and diagnostics UI are removed. The shared previous-folder glyph kind remains for structural orientation; connected/view-mode/semantic relationship contracts are removed.
 
 ## Components
 
@@ -28,7 +28,7 @@ flowchart TD
 
 ## State ownership
 
-`SpatialWorkspaceSession` owns normalized roots/pins, current root/path, selected node, base scene, temporary shown scene, search results and preview state. `MainWindow` projects those values and owns only interface state: sidebar tab/collapse, settings visibility, hide-controls, timers and watcher lifetime. `GraphSceneControl` owns pan, zoom, hover animation and bounded drawing caches.
+`SpatialWorkspaceSession` owns normalized roots/pins, current root/path, selected node, one displayed scene, search results and preview marker. `MainWindow` projects those values and owns only interface state: sidebar tab/collapse, settings visibility, hide-controls, timers and watcher lifetime. `GraphSceneControl` owns pan, zoom, hover animation and bounded drawing caches.
 
 Each node has a root-qualified identity; identical paths under overlapping chosen roots cannot accidentally acquire another scope. Providers must match the exact requested local access root. Connected display paths or opaque IDs are never accepted as authority.
 
@@ -52,15 +52,15 @@ Pins are folder shortcuts, not search roots. Pin clicks revalidate availability.
 
 Search trims queries to 160 characters, reads only chosen roots and caps combined visible results at 80. Work is split across roots with a total directory budget of 500; partial/unavailable/truncated results are announced. Results from overlapping roots are deduplicated by native path. A pin outside the root set does not extend search scope.
 
-Pointer hover or keyboard selection of a result temporarily reveals its validated ancestor chain. The committed current root/path stays unchanged. The session retains the base scene separately, restores it on hover exit, and counts matching descendants for visible nodes. Double-click or Enter on a folder result navigates there; on a file result it navigates to the containing folder and selects the file. File launch remains an explicit Open file / graph activation action.
+Pointer hover or keyboard selection of a result validates its local path and marks the deepest existing visible ancestor in the same chosen-root authority, or the item itself when visible. No nodes or edges are added. An offscreen branch has no map marker; its full path remains in the sidebar. The committed current root/path stays unchanged. Leaving the result clears its marker. Density changes reproject the one scene and recompute any validated marker. The session counts matching descendants for visible nodes. Double-click or Enter on a folder result navigates there; on a file result it navigates to the containing folder and selects the file. File launch remains an explicit Open file / graph activation action.
 
 Cancellation and navigation, search, preview and workspace generations reject late work. A preview cannot overwrite a newer navigation/root set, and a pending directory load commits only its location—not stale roots or pin order captured before awaiting. Refresh reruns an active query and restores a valid preview only when its originating generations still match.
 
 ## Scene and rendering bounds
 
-The workspace scene has at most 64 nodes. Overview acquisition admits each root, up to six immediate children and an optional open-folder aggregate; responsive presentation reduces visible children for narrow or many-root layouts. A focused folder projects its cached bounded directory snapshot into pages of 4–60 children, with previous/next controls inside the same bound. The shell normally shows 24 children, reducing to 4–8 on short/compact canvases and reducing further for larger text. Resizing reprojects the cached snapshot without new filesystem work. Enumeration is capped at 5,000 entries; truncation is visible. Search previews share the scene cap and never imply invented relationships.
+The workspace scene has at most 64 nodes. Overview acquisition admits each root, up to six immediate children; responsive presentation reduces visible children for narrow or many-root layouts. A focused folder projects its cached bounded directory snapshot into pages of 4–60 children, with previous/next controls inside the same bound. The shell normally shows 24 children, reducing to 4–8 on short/compact canvases and reducing further for larger text. Resizing reprojects the cached snapshot without new filesystem work. Enumeration is capped at 5,000 entries; truncation is visible. The parent folder glyph opens its contents directly; the synthetic Open folder node is removed. Search markers never expand the scene.
 
-The renderer uses outlined folder/document glyphs, real containment edges, deterministic cluster placement and bounded caches. Shared static glyph geometry avoids rebuilding the same paths. Text, hit targets, label obstacles and connector endpoints use the same scene geometry. Nebula/Light and Reduced motion/effects share the same navigation state. Automation is a bounded projection of visible graph nodes, not an independent filesystem browser.
+The renderer uses compact outlined folder/document glyphs, real containment edges, deterministic cluster placement and bounded caches. Thin straight connections have constant color and width across hover/selection and are clipped around all glyph and label bounds. Local hover uses a soft glow and label background; the former moving/enlarging lens, floating positions, preview route glow and dust are removed. Reduced motion stops the local pulse. No animation ticker runs when the scene is idle. Shared static glyph geometry avoids rebuilding the same paths. Text, hit targets, label obstacles and connector endpoints use the same scene geometry. Nebula/Light and Reduced motion/effects share the same navigation state. Automation is a bounded projection of visible graph nodes, not an independent filesystem browser.
 
 ## Refresh and lifecycle
 

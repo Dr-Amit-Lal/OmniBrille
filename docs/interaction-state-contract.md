@@ -1,6 +1,6 @@
 # Spatial workspace interaction contract
 
-Current product: `1.2.0-nebula.4`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
+Current product: `1.2.0-nebula.5`, local-only Spatial Explorer. All navigation, search and file actions use `SpatialWorkspaceSession`. The shell and graph must not maintain competing location state.
 
 | Action | Required outcome |
 | --- | --- |
@@ -17,8 +17,8 @@ Current product: `1.2.0-nebula.4`, local-only Spatial Explorer. All navigation, 
 | Reorder pin | Same saved order via drag, Alt+Up/Down or context-menu equivalents |
 | Ctrl+F | Open Search and focus its editor; normal controls stay hidden if already hidden |
 | Type search / Enter | Search chosen roots after debounce / immediately; show bounded partial-result status |
-| Hover/select result | Temporarily reveal its ancestor chain without committing navigation or saving the preview |
-| Leave result / close Search | Restore the base scene; closing Search clears query/results |
+| Hover/select result | Highlight the item or nearest visible parent inside the same chosen root; do not add nodes/edges, move glyphs or commit/save navigation |
+| Leave result / close Search | Clear the local marker; closing Search clears query/results |
 | Activate result | Enter folder, or enter containing folder and select file; no implicit file launch |
 | Ctrl+R | Request bounded refresh of current scene and active query |
 | Ctrl+H | Hide/restore controls without changing workspace authority or location |

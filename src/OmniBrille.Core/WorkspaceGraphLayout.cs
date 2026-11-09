@@ -36,7 +36,7 @@ public static class WorkspaceGraphLayout
             var cell = CellFor(index, roots.Length);
             if (previousLayout is not null && previousLayout.TryGetValue(root, out var rootAnchor)) { cell = cell with { X = rootAnchor.X, Y = rootAnchor.Y }; }
             else if (previousLayout is { Count: > 0 }) { cell = PreviewCell(previousLayout.Values); }
-            var rootScale = roots.Length <= 3 ? 1.32 : 1.08;
+            var rootScale = roots.Length <= 3 ? 1.12 : 1.0;
             result[root] = new(root, cell.X, cell.Y, rootScale, 1, 0, 0);
             var queue = new Queue<(string Id, int Depth, double Angle)>();
             queue.Enqueue((root, 0, -Math.PI / 2));

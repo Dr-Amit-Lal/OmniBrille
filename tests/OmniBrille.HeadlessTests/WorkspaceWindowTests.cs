@@ -131,7 +131,7 @@ public sealed class WorkspaceWindowTests
         await WaitUntilAsync(() => window.Session.PreviewNodeId is not null);
         Assert.Equal(original, window.Session.CurrentPath);
         Assert.True(window.Session.IsOverview);
-        Assert.NotEmpty(window.Session.PreviewPathNodeIds);
+        Assert.Equal(fixture.Teaching, window.Session.NodeById(window.Session.PreviewNodeId)!.Path);
         Assert.Null(window.Session.SelectedNodeId);
 
         list.SelectedIndex = index;
@@ -443,7 +443,8 @@ public sealed class WorkspaceWindowTests
         var point = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
         window.MouseMove(point);
         var hit = window.Session.SearchResults[index];
-        await WaitUntilAsync(() => window.Session.PreviewNodeId == SpatialWorkspaceSession.Key(hit.RootPath, hit.Path));
+        await WaitUntilAsync(() => window.Session.NodeById(window.Session.PreviewNodeId) is { } node &&
+            window.Session.RootForNode(node.Id) == hit.RootPath && FileMapWorkspace.IsWithin(node.Path, hit.Path));
     }
 
     private static List<Grid> PinRows(MainWindow window) => window.FindControl<StackPanel>("PinnedEntries")!.Children.OfType<Grid>().ToList();

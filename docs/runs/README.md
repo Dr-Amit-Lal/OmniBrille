@@ -11,6 +11,8 @@ Retain a report only for architecture/product boundary changes, serious regressi
 
 ## Reports
 
+- [2026-11-08 Calm spatial map](2026-11-08-calm-spatial-map.md): stationary local hover, smaller icons/text, muted straight connections and direct root navigation.
+
 - [2026-11-09 Saved local spatial workspace](2026-11-09-saved-spatial-workspace.md): persistent multiple roots, independent pins, straight search paths, complete feature retirement, responsive rendering and installer lifecycle gates.
 
 - [`2026-09-11-v1.2.0-release.md`](2026-09-11-v1.2.0-release.md) — v1.2.0 integration, publication evidence map, version/documentation audit and retained manual acceptance.
