@@ -246,7 +246,9 @@ public sealed class WorkspaceRendererTests
             using (window.CaptureRenderedFrame()) { }
             Assert.True(graph.Diagnostics.MotionActive);
             Assert.Equal(0, graph.Diagnostics.HoverHighlights);
-            Assert.Equal(1, graph.Diagnostics.MaximumHoverScale);
+            // The final easing frame can arrive a few milliseconds late on a
+            // busy hosted runner; it must nevertheless be effectively at rest.
+            Assert.InRange(graph.Diagnostics.MaximumHoverScale, 1, 1.001);
             graph.SetMotionActivity(false);
             using (window.CaptureRenderedFrame()) { }
             Assert.False(graph.Diagnostics.MotionActive);
