@@ -278,7 +278,6 @@ public static class OmniBrilleDockProbe {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
@@ -288,6 +287,20 @@ public static class OmniBrilleDockProbe {
     private delegate bool EnumCallback(IntPtr window, IntPtr data);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumCallback callback, IntPtr data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int maxCount);
+    public static IntPtr FindProcessWindow(uint processId, string title) {
+        var found = IntPtr.Zero;
+        EnumWindows((window, data) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId && IsWindowVisible(window)) {
+                var text = new StringBuilder(256);
+                GetWindowText(window, text, text.Capacity);
+                if (text.ToString() == title) { found = window; return false; }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
     public static string DescribeWindows(uint processId) {
         var result = new StringBuilder();
         EnumWindows((window, data) => {
@@ -311,17 +324,12 @@ $deadline = (Get-Date).AddSeconds(15)
 $dockHandle = [IntPtr]::Zero
 do {
   Start-Sleep -Milliseconds 200
-  $candidate = [OmniBrilleDockProbe]::FindWindow($null, 'Spatial Explorer tab')
-  $candidatePid = [uint32]0
-  if ($candidate -ne [IntPtr]::Zero) {
-    [void][OmniBrilleDockProbe]::GetWindowThreadProcessId($candidate, [ref]$candidatePid)
-    if ($candidatePid -eq $applicationProcess.Id -and [OmniBrilleDockProbe]::IsWindowVisible($candidate)) { $dockHandle = $candidate }
-  }
+  $dockHandle = [OmniBrilleDockProbe]::FindProcessWindow([uint32]$applicationProcess.Id, 'Spatial Explorer tab')
 } until (($dockHandle -ne [IntPtr]::Zero -and [OmniBrilleDockProbe]::IsIconic($mainHandle)) -or (Get-Date) -gt $deadline)
 if ($dockHandle -eq [IntPtr]::Zero -or -not [OmniBrilleDockProbe]::IsIconic($mainHandle)) {
   $applicationProcess.Refresh()
   $windows = [OmniBrilleDockProbe]::DescribeWindows([uint32]$applicationProcess.Id)
-  throw "Minimizing the installed app did not expose the edge tab. Main iconic: $([OmniBrilleDockProbe]::IsIconic($mainHandle)); process exited: $($applicationProcess.HasExited); candidate: $candidate; candidate PID: $candidatePid; windows: $windows"
+  throw "Minimizing the installed app did not expose the edge tab. Main iconic: $([OmniBrilleDockProbe]::IsIconic($mainHandle)); process exited: $($applicationProcess.HasExited); windows: $windows"
 }
 $dockRect = [OmniBrilleDockProbe+RECT]::new()
 $clientRect = [OmniBrilleDockProbe+RECT]::new()
