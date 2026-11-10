@@ -121,10 +121,13 @@ $publishArguments = @(
 & dotnet @publishArguments
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 
-# Voice is an installer-owned, fixed, hash-bound bundle. The installed application has no
-# runtime download path and never executes an arbitrary configured binary in ordinary use.
-$voiceBundle = & (Join-Path $PSScriptRoot 'Get-VoiceBundle.ps1') `
-    -DestinationDirectory (Join-Path $resolvedPublish 'Voice')
+# This product ships local workspace functionality only.
+$retiredPayload = @(Get-ChildItem -LiteralPath $resolvedPublish -Recurse -File | Where-Object {
+    $_.Name -like 'NAudio*.dll' -or $_.Name -like 'OmniSorSe*.dll'
+})
+if ((Test-Path -LiteralPath (Join-Path $resolvedPublish 'Voice')) -or $retiredPayload.Count -gt 0) {
+    throw 'Retired voice or connected payload was found in the published runtime.'
+}
 
 # Runtime packs may carry native-library symbols even when project debug symbols are disabled.
 # They are useful to developers but must not enter preview publish/install artifacts.
@@ -195,5 +198,4 @@ $releaseArtifacts = & (Join-Path $PSScriptRoot 'New-ReleaseArtifacts.ps1') `
     Manifest = $releaseArtifacts.Manifest
     DependencyManifest = $releaseArtifacts.DependencyManifest
     ReleaseNotes = $releaseArtifacts.ReleaseNotes
-    VoiceBundleBytes = $voiceBundle.Bytes
 }

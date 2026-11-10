@@ -1,6 +1,6 @@
 # ADR 0002: Separate saved standalone file map
 
-Status: Accepted for this custom fork.
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 ## Decision
 

@@ -21,6 +21,20 @@ public sealed class GraphMotionPolicyTests
     }
 
     [Fact]
+    public void Evaluate_FullMotionFloatsWithoutChangingTheBaseOrAddingScaleWhenNotHovered()
+    {
+        var source = new GraphLayoutNode("floating-folder", 0.3, -0.2, 1.02, 1, 1, 1);
+        var first = GraphMotionPolicy.Evaluate(source, 0, 0, reducedMotion: false);
+        var later = GraphMotionPolicy.Evaluate(source, 2, 0, reducedMotion: false);
+
+        Assert.NotEqual((first.X, first.Y), (later.X, later.Y));
+        Assert.Equal(source.Scale, first.Scale);
+        Assert.Equal(source.Scale, later.Scale);
+        Assert.Equal(0.3, source.X);
+        Assert.Equal(-0.2, source.Y);
+    }
+
+    [Fact]
     public void Evaluate_ReducedMotionReturnsTheImmutableBaseLayout()
     {
         var source = new GraphLayoutNode("node", 0.42, -0.25, 0.7, 0.8, 1, 2);

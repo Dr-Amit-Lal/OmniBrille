@@ -8,9 +8,13 @@ Historical decisions reconstructed after the fact must say **Reconstructed from 
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| [0001](0001-separate-provider-authorities.md) | Accepted | Keep standalone filesystem and connected OmniSorSe authority separate behind application-local provider contracts |
-| [0002](0002-bounded-deterministic-scenes.md) | Accepted | Use deterministic bounded Structure/Context/Hybrid scenes and a custom drawing renderer |
-| [0003](0003-bounded-descendant-previews.md) | Accepted | Acquire actual descendant previews through bounded provider operations, admitting them only into unused Structure scene slots |
+| [0006](0006-local-spatial-workspace.md) | Accepted | One local saved spatial workspace; remove retired runtime/modes |
+| [0005](0005-pinned-folders.md) | Superseded by 0006 | Earlier standalone pin sidebar |
+| [0004](0004-spatial-only-nebula.md) | Superseded by 0006 | Earlier sole spatial interface and hide-controls behavior |
+| [0003](0003-bounded-descendant-previews.md) | Superseded by 0006 | Earlier bounded descendant previews |
+| [0002](0002-bounded-deterministic-scenes.md) | Superseded by 0006 | Earlier Structure/Context/Hybrid scenes |
+| [Standalone file map](0002-standalone-file-map.md) | Superseded by 0006 | Earlier My Files session/window |
+| [0001](0001-separate-provider-authorities.md) | Superseded by 0006 | Earlier local/connected provider separation |
 
 ## Minimal template
 
@@ -28,5 +32,3 @@ Reconstructed from repository evidence. <!-- only when applicable -->
 ## Rejected alternatives
 ## Evidence
 ```
-
-- [0002: Separate saved standalone file map](0002-standalone-file-map.md) — accepted for the custom My Files fork.

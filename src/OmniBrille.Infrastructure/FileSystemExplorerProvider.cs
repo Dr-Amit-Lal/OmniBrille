@@ -47,7 +47,7 @@ public sealed class FileSystemExplorerProvider :
         var observed = 0;
         try
         {
-            EnsureOrdinaryPreviewDirectory(path);
+            EnsureOrdinaryDirectory(path);
             focus = CreateFocus(path);
             using var entries = Directory.EnumerateFileSystemEntries(path).GetEnumerator();
             while (observed < 64 && children.Count < 3)
@@ -62,7 +62,7 @@ public sealed class FileSystemExplorerProvider :
                 try
                 {
                     var entry = CreateEntry(entries.Current);
-                    if (entry.Kind == ExplorerNodeKind.Folder && entry.IsNavigable && !entry.IsReparsePoint)
+                    if (entry.Kind == ExplorerNodeKind.Folder && entry.IsNavigable)
                     {
                         children.Add(entry);
                     }
@@ -92,27 +92,19 @@ public sealed class FileSystemExplorerProvider :
         }
     }
 
-    private void EnsureOrdinaryPreviewDirectory(string path)
+    private void EnsureOrdinaryDirectory(string path)
     {
-        for (var directory = new DirectoryInfo(path); directory is not null; directory = directory.Parent)
+        if (FileMapPathGuard.IsOrdinaryPath(AccessRoot, path, requireDirectory: true))
         {
-            if (!directory.Exists)
-            {
-                throw new DirectoryNotFoundException();
-            }
-
-            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
-            {
-                throw new UnauthorizedAccessException("Preview traversal through a reparse point is unavailable.");
-            }
-
-            if (PathBoundary.Comparer.Equals(directory.FullName, AccessRoot))
-            {
-                return;
-            }
+            return;
         }
 
-        throw new UnauthorizedAccessException("The preview target has no authorized access-root ancestor.");
+        if (!Directory.Exists(path))
+        {
+            throw new DirectoryNotFoundException();
+        }
+
+        throw new UnauthorizedAccessException("This folder is unavailable or resolves through an unsupported link.");
     }
 
     public async Task<ExplorerDirectorySnapshot> GetDirectoryAsync(
@@ -174,27 +166,26 @@ public sealed class FileSystemExplorerProvider :
         int batchSize,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var focus = await Task.Run(() => CreateFocus(path), cancellationToken);
-        if (!Directory.Exists(path))
-        {
-            yield return new ExplorerDirectoryBatch(
-                focus,
-                [],
-                0,
-                true,
-                ExplorerFailureKind.NotFound,
-                "This folder no longer exists or is unavailable.",
-                0);
-            yield break;
-        }
-
+        var focus = CreateFocus(path, readMetadata: false);
         EnumerationState? state = null;
         ExplorerDirectoryBatch? initializationFailure = null;
         try
         {
             state = await Task.Run(
-                () => new EnumerationState(Directory.EnumerateFileSystemEntries(path).GetEnumerator()),
+                () =>
+                {
+                    EnsureOrdinaryDirectory(path);
+                    focus = CreateFocus(path);
+                    return new EnumerationState(Directory.EnumerateFileSystemEntries(path).GetEnumerator());
+                },
                 cancellationToken);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            initializationFailure = FailureBatch(
+                focus,
+                ExplorerFailureKind.NotFound,
+                "This folder no longer exists or is unavailable.");
         }
         catch (UnauthorizedAccessException)
         {
@@ -238,7 +229,21 @@ public sealed class FileSystemExplorerProvider :
         int batchSize,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var added = new List<ExplorerEntry>(batchSize);
+        try
+        {
+            EnsureOrdinaryDirectory(focus.Path);
+        }
+        catch (Exception exception) when (IsRecoverable(exception))
+        {
+            state.Failure = exception is UnauthorizedAccessException
+                ? ExplorerFailureKind.AccessDenied
+                : ExplorerFailureKind.EnumerationFailed;
+            state.FailureMessage = "This folder became unavailable during enumeration.";
+            state.IsComplete = true;
+        }
+
         while (added.Count < batchSize && !state.IsComplete)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -334,7 +339,7 @@ public sealed class FileSystemExplorerProvider :
         ExplorerFailureKind failure,
         string warning) => new(focus, [], 0, true, failure, warning, 0);
 
-    private static ExplorerSearchResult SearchCore(SearchRequest request, CancellationToken cancellationToken)
+    private ExplorerSearchResult SearchCore(SearchRequest request, CancellationToken cancellationToken)
     {
         var query = request.Query.Trim();
         if (query.Length == 0)
@@ -360,6 +365,9 @@ public sealed class FileSystemExplorerProvider :
 
             try
             {
+                // Revalidate every dequeued directory, including an explicitly requested
+                // search root and folders replaced since their parent was enumerated.
+                EnsureOrdinaryDirectory(directory);
                 foreach (var path in Directory.EnumerateFileSystemEntries(directory))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -478,14 +486,16 @@ public sealed class FileSystemExplorerProvider :
         var attributes = File.GetAttributes(path);
         var isDirectory = attributes.HasFlag(FileAttributes.Directory);
         var isReparsePoint = attributes.HasFlag(FileAttributes.ReparsePoint);
+        var classification = FileSystemPathClassifier.Classify(path, attributes);
+        var isAllowed = classification is FileSystemPathKind.Ordinary or FileSystemPathKind.CloudPlaceholder;
         long? size = null;
-        DateTimeOffset? modified;
+        DateTimeOffset? modified = null;
 
-        if (isDirectory)
+        if (isAllowed && isDirectory)
         {
             modified = Directory.GetLastWriteTimeUtc(path);
         }
-        else
+        else if (isAllowed)
         {
             var file = new FileInfo(path);
             size = file.Length;
@@ -501,7 +511,7 @@ public sealed class FileSystemExplorerProvider :
             size,
             modified,
             isReparsePoint,
-            isDirectory && !isReparsePoint,
+            isDirectory && isAllowed,
             ParentNavigationTarget: Path.GetDirectoryName(normalized));
     }
 

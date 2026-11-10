@@ -11,6 +11,16 @@ Retain a report only for architecture/product boundary changes, serious regressi
 
 ## Reports
 
+- [2026-11-09 Left-edge workspace tab](2026-11-09-left-edge-tab.md): a non-taskbar launcher restores the running workspace from the screen edge, with native installer-probe coverage planned.
+
+- [2026-11-09 Search indicators and direct file opening](2026-11-09-search-indicators-file-opening.md): moving points on existing search connections, explicit file-result opening and retained location navigation.
+
+- [2026-11-09 Restored spatial effects](2026-11-09-restored-spatial-effects.md): original gentle motion, smooth hover response and glow restored within the compact layout; exact-build qualification pending at documentation handoff.
+
+- [2026-11-08 Calm spatial map](2026-11-08-calm-spatial-map.md): stationary local hover, smaller icons/text, muted straight connections and direct root navigation.
+
+- [2026-11-09 Saved local spatial workspace](2026-11-09-saved-spatial-workspace.md): persistent multiple roots, independent pins, straight search paths, complete feature retirement, responsive rendering and installer lifecycle gates.
+
 - [`2026-09-11-v1.2.0-release.md`](2026-09-11-v1.2.0-release.md) — v1.2.0 integration, publication evidence map, version/documentation audit and retained manual acceptance.
 
 - [`2026-09-11-github-issue-audit.md`](2026-09-11-github-issue-audit.md) — nine-issue audit, bounded actual previews, navigation/labels/Voice/sound corrections, software evidence, and retained manual acceptance gates.
@@ -28,3 +38,9 @@ Retain a report only for architecture/product boundary changes, serious regressi
 - [`2026-09-04-v1.1.0-public-release.md`](2026-09-04-v1.1.0-public-release.md) — exact-commit unsigned qualification, immutable tag and six-asset stable release, public verification, and explicitly retained manual/hardware limits.
 
 - [2026-11-07: My Files custom fork](2026-11-07-my-files-fork.md) — standalone saved map, actual interface previews, automated checks and native Windows limits.
+
+- [2026-11-07 Nebulux My Files continuation](2026-11-07-nebulux-my-files.md): theme implementation, source recovery, validation and installer evidence.
+
+- [2026-11-08 Nebula Spatial Explorer](2026-11-08-nebula-spatial-explorer.md): sole spatial interface, constellation appearance, retained interaction contracts and validation boundaries.
+
+- [2026-11-08 Pinned spatial folders](2026-11-08-pinned-spatial-folders.md): saved folder pins, direct graph navigation, matched glyphs, responsive layout and validation boundaries.

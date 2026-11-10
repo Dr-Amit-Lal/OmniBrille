@@ -228,7 +228,7 @@ public sealed class GraphNeighborhoodBuilderTests
             [
                 PreviewChild("file", otherParent) with { Kind = ExplorerNodeKind.File },
                 PreviewChild("disabled", otherParent) with { IsNavigable = false },
-                PreviewChild("link", otherParent) with { IsReparsePoint = true },
+                PreviewChild("link", otherParent) with { IsReparsePoint = true, IsNavigable = false },
             ]),
             new("missing-parent", [PreviewChild("orphan", parent)]),
             new(parent.Id, [PreviewChild("duplicate-parent", parent)]),
@@ -238,6 +238,22 @@ public sealed class GraphNeighborhoodBuilderTests
 
         Assert.Equal(valid.Id, Assert.Single(scene.Nodes, node => (node.Roles & ExplorerNodeRole.DescendantPreview) != 0).Id);
         Assert.Equal(scene.Nodes.Count, scene.Nodes.Select(node => node.Id).Distinct(ExplorerIdentity.Comparer).Count());
+    }
+
+    [Fact]
+    public void Build_AdmitsProviderVerifiedNavigableCloudFolderPreviews()
+    {
+        var parent = Entry("parent", ExplorerNodeKind.Folder);
+        var cloudFolder = PreviewChild("cloud-folder", parent) with { IsReparsePoint = true, IsNavigable = true };
+        var snapshot = new ExplorerDirectorySnapshot(Entry("root", ExplorerNodeKind.Folder), [parent],
+            Previews: [new ExplorerDirectoryPreview(parent.Id, [cloudFolder])]);
+
+        var scene = new GraphNeighborhoodBuilder().Build(snapshot);
+
+        var preview = Assert.Single(scene.Nodes, node => (node.Roles & ExplorerNodeRole.DescendantPreview) != 0);
+        Assert.Equal(cloudFolder.Id, preview.Id);
+        Assert.True(preview.IsNavigable);
+        Assert.Contains(scene.Edges, edge => edge.SourceId == parent.Id && edge.TargetId == cloudFolder.Id);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
-# Local click-to-toggle voice
+# Local click-to-toggle voice (historical)
 
+**Superseded in 1.2.0-nebula.4.** This retained guide describes removed earlier functionality and is not a current product contract. See [the local workspace architecture](architecture.md) and [ADR 0006](decisions/0006-local-spatial-workspace.md).
 Voice provides optional, one-shot input to OmniBrille. Version 1.2.0 includes microphone/Stop, quiet-completion, and cancellation-race refinements to the Stage 9 boundary. Each explicit utterance becomes either a deterministic UI/navigation command or an existing Search request. There is no wake word, always-listening mode, conversational loop, destructive voice action, LLM intent parser, cloud transcription requirement, or telemetry.
 
 ## Technology decision

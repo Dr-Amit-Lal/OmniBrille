@@ -1,6 +1,6 @@
 # ADR 0002: Bounded deterministic graph scenes
 
-Status: Accepted
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 Current refinement: [ADR 0003](0003-bounded-descendant-previews.md) adds bounded actual descendant previews within the same scene cap. The current Structure layout varies radial slots and groups file types; deterministic placement and separate semantic depth remain unchanged principles.
 
@@ -46,4 +46,4 @@ Determinism makes navigation, Back, tests, accessibility projection, and perform
 - Visual policy and renderer: `ee7a94e`.
 - Search-allocation correction, cache bounds, Context pressure review, and accessibility/platform hardening: `17f3004`, `0bce6b9`.
 - Context/Hybrid implementation: `6dd9ae5`, `9731dc4`, `7753741`, `2e7466b`.
-- Current implementation: [`GraphNeighborhoodBuilder.cs`](../../src/OmniBrille.Core/GraphNeighborhoodBuilder.cs), [`ContextRenderBudgetPolicy.cs`](../../src/OmniBrille.Core/ContextRenderBudgetPolicy.cs), layout/presentation classes in [`OmniBrille.Core`](../../src/OmniBrille.Core), and [`GraphSceneControl.cs`](../../src/OmniBrille.Desktop/Rendering/GraphSceneControl.cs).
+- Current implementation: [`GraphNeighborhoodBuilder.cs`](../../src/OmniBrille.Core/GraphNeighborhoodBuilder.cs), [`ContextRenderBudgetPolicy.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/src/OmniBrille.Core/ContextRenderBudgetPolicy.cs), layout/presentation classes in [`OmniBrille.Core`](../../src/OmniBrille.Core), and [`GraphSceneControl.cs`](../../src/OmniBrille.Desktop/Rendering/GraphSceneControl.cs).

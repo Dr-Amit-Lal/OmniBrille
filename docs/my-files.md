@@ -1,6 +1,7 @@
-# My Files custom interface
+# My Files custom interface (historical)
 
-My Files is the default standalone screen in this fork. Its purpose is to make folders and files easier to recognize without deep click-through navigation. The original OmniBrille explorer remains available in Settings and for OmniSorSe handoffs.
+**Superseded in 1.2.0-nebula.4.** This retained guide describes removed earlier functionality and is not a current product contract. See [the local workspace architecture](architecture.md) and [ADR 0006](decisions/0006-local-spatial-workspace.md).
+My Files is retired from the application entry points in `1.2.0-nebula.1`. Normal launch, the single **OmniBrille Spatial Explorer** Start Menu shortcut, `--advanced`, and OmniSorSe handoffs all use Spatial Explorer. The former My Files implementation and regression fixtures remain in source for now; its saved workspace is preserved but not read into Spatial Explorer. The following details describe that dormant implementation.
 
 ## Interaction
 
@@ -10,7 +11,15 @@ My Files is the default standalone screen in this fork. Its purpose is to make f
 - Current Work stores a bounded list of file references, not copies. Selecting a pin reveals its location; unpinning changes only the map.
 - Search scans filenames within selected roots on request, shows paths, and reveals a result's ancestry. It is bounded and is not a whole-computer index.
 - Native buttons support Tab, Enter and Space. Ctrl+F opens Search; Alt+Home returns Home; Escape closes secondary panels. Full filenames and paths are available in details/accessible labels even when a long map label is shortened.
-- The map is scrollable and retains readable text instead of shrinking all nodes to fit. Settings provides three text sizes, Light/Dark appearance, explicit Refresh files, and Remove from map.
+- The map is scrollable and retains readable text instead of shrinking all nodes to fit. Settings provides three text sizes, Light/Nebulux (dark) appearance, explicit Refresh files, and Remove from map.
+
+## Nebulux appearance
+
+The retained My Files implementation uses Nebulux (dark) by default. An existing Light preference and an explicit startup theme are respected. The Appearance picker retains the existing `Dark`/`Light` storage values, so there is no preference or workspace migration.
+
+The My Files window owns its dark navy gradients, glass-like cards, colored folder/file outlines, soft static glows and branch lines. Six accent colors repeat in saved root order; descendants use their root's color. Labels remain packaged Inter with a distinct keyboard-focus ring. Spatial Explorer has its own Nebula palette: small branch-colored points, thin structural connectors, quiet static navy/violet washes and rounded controls. Its Dark preference is displayed as Nebula, while Light remains available. Settings, Search and file details use opaque panels for readable text.
+
+The six names in the screenshots are examples. First launch asks you to connect actual folders; it does not create or reorganize folders on your PC.
 
 ## State and boundaries
 

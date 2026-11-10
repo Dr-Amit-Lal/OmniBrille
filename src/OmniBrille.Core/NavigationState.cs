@@ -8,8 +8,6 @@ public sealed class NavigationState
 
     public string? CurrentPath { get; private set; }
 
-    public ExplorerProviderMode Mode { get; private set; } = ExplorerProviderMode.Standalone;
-
     public bool CanGoBack => _history.Count > 0;
 
     public IReadOnlyList<string> History => _history;
@@ -18,14 +16,12 @@ public sealed class NavigationState
     {
         AccessRoot = null;
         CurrentPath = null;
-        Mode = ExplorerProviderMode.Standalone;
         _history.Clear();
     }
 
-    public void SetRoot(string path, ExplorerProviderMode mode = ExplorerProviderMode.Standalone)
+    public void SetRoot(string path)
     {
-        Mode = mode;
-        var normalized = Normalize(path, mode);
+        var normalized = Normalize(path);
         AccessRoot = normalized;
         CurrentPath = normalized;
         _history.Clear();
@@ -34,16 +30,13 @@ public sealed class NavigationState
     public void NavigateTo(string path)
     {
         EnsureInitialized();
-        var normalized = Normalize(path, Mode);
-        if (Mode == ExplorerProviderMode.Standalone && !PathBoundary.IsWithin(AccessRoot!, normalized))
+        var normalized = Normalize(path);
+        if (!PathBoundary.IsWithin(AccessRoot!, normalized))
         {
             throw new InvalidOperationException("Navigation cannot leave the explicitly selected access root.");
         }
 
-        var comparer = Mode == ExplorerProviderMode.Connected
-            ? ExplorerIdentity.Comparer
-            : PathBoundary.Comparer;
-        if (comparer.Equals(CurrentPath, normalized))
+        if (PathBoundary.Comparer.Equals(CurrentPath, normalized))
         {
             return;
         }
@@ -66,16 +59,14 @@ public sealed class NavigationState
         return CurrentPath;
     }
 
-    private static string Normalize(string path, ExplorerProviderMode mode)
+    private static string Normalize(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Any(char.IsControl))
         {
             throw new ArgumentException("A navigation target is required.", nameof(path));
         }
 
-        return mode == ExplorerProviderMode.Standalone
-            ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))
-            : path;
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
     }
 
     private void EnsureInitialized()

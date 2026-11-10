@@ -1,6 +1,6 @@
 # ADR 0001: Separate standalone and connected provider authorities
 
-Status: Accepted
+Status: Superseded for the current product by [ADR 0006](0006-local-spatial-workspace.md). Original decision and rationale follow.
 
 Reconstructed from repository evidence.
 
@@ -43,5 +43,5 @@ This keeps Standalone useful and private, prevents a connected authorization gap
 - Initial boundary and Core/provider split: commits `def16ea`, `775789a`.
 - Connected implementation and hardening: `7338245`, `f6f3afd`, `9e877d0`, `e556f14`.
 - Secure handoff and Context: `6dd9ae5`, `fb6d4f0`.
-- Current implementation: [`ExplorerModels.cs`](../../src/OmniBrille.Core/ExplorerModels.cs), [`ExplorerSession.cs`](../../src/OmniBrille.Desktop/Presentation/ExplorerSession.cs), [`OmniSorSeConnectedProvider.cs`](../../src/OmniBrille.Infrastructure/OmniSorSe/OmniSorSeConnectedProvider.cs), and [`explorer-protocol.md`](../explorer-protocol.md).
+- Current implementation: [`ExplorerModels.cs`](../../src/OmniBrille.Core/ExplorerModels.cs), [`ExplorerSession.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/src/OmniBrille.Desktop/Presentation/ExplorerSession.cs), [`OmniSorSeConnectedProvider.cs`](https://github.com/Dr-Amit-Lal/OmniBrille/blob/f38811d/src/OmniBrille.Infrastructure/OmniSorSe/OmniSorSeConnectedProvider.cs), and [`explorer-protocol.md`](../explorer-protocol.md).
 - Regression coverage: `NavigationStateTests`, `ExplorerSessionTests`, `NamedPipeExplorerProtocolClientTests`, `OmniSorSeConnectedProviderTests`, and `OmniSorSeConnectionCoordinatorTests`.

@@ -1,5 +1,6 @@
-# Context rendering contract
+# Context rendering contract (historical)
 
+**Superseded in 1.2.0-nebula.4.** This retained guide describes removed earlier functionality and is not a current product contract. See [the local workspace architecture](architecture.md) and [ADR 0006](decisions/0006-local-spatial-workspace.md).
 > **Authority:** current renderer-facing Context and Hybrid contract. Stage-specific measurements are historical evidence, not universal performance guarantees.
 
 ## Status

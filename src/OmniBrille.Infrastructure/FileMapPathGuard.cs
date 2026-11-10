@@ -2,7 +2,7 @@ using OmniBrille.Core;
 
 namespace OmniBrille.Infrastructure;
 
-/// <summary>Revalidates saved local selections before every filesystem read or activation.</summary>
+/// <summary>Revalidates ordinary paths and verified Cloud Files placeholders before reads or activation.</summary>
 public static class FileMapPathGuard
 {
     public static bool IsOrdinaryPath(string rootPath, string path, bool requireDirectory)
@@ -15,36 +15,36 @@ public static class FileMapPathGuard
 
         try
         {
-            var attributes = File.GetAttributes(target);
-            if ((attributes & FileAttributes.ReparsePoint) != 0 ||
-                (requireDirectory && (attributes & FileAttributes.Directory) == 0))
-            {
-                return false;
-            }
-
-            var current = (attributes & FileAttributes.Directory) != 0 ? target : Path.GetDirectoryName(target);
+            // Check from the volume/share root inward, before inspecting children of
+            // any potential link. This includes ancestors above an explicitly selected
+            // root: a normal folder underneath a junction is still redirected authority.
+            var ancestors = new Stack<string>();
+            var current = target;
             while (current is not null)
             {
-                var ancestor = File.GetAttributes(current);
-                if ((ancestor & FileAttributes.ReparsePoint) != 0 || (ancestor & FileAttributes.Directory) == 0)
+                ancestors.Push(current);
+                current = Path.GetDirectoryName(current);
+            }
+
+            while (ancestors.TryPop(out current))
+            {
+                var attributes = File.GetAttributes(current);
+                if (FileSystemPathClassifier.Classify(current, attributes) is not
+                    (FileSystemPathKind.Ordinary or FileSystemPathKind.CloudPlaceholder) ||
+                    ((requireDirectory || !PathBoundary.Comparer.Equals(current, target) ||
+                      PathBoundary.Comparer.Equals(current, root)) &&
+                     (attributes & FileAttributes.Directory) == 0))
                 {
                     return false;
                 }
-
-                if (PathBoundary.Comparer.Equals(current, root))
-                {
-                    return true;
-                }
-
-                current = Path.GetDirectoryName(current);
             }
+
+            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                           System.Security.SecurityException or ArgumentException or NotSupportedException)
         {
             return false;
         }
-
-        return false;
     }
 }

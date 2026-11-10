@@ -1,12 +1,12 @@
 <Project>
   <PropertyGroup>
     <VersionPrefix>1.2.0</VersionPrefix>
-    <VersionSuffix>myfiles.1</VersionSuffix>
+    <VersionSuffix>nebula.8</VersionSuffix>
     <AssemblyVersion>1.2.0.0</AssemblyVersion>
     <FileVersion>1.2.0.0</FileVersion>
     <Title>OmniBrille</Title>
     <Product>OmniBrille</Product>
-    <Description>Local-first spatial file explorer with optional OmniSorSe integration.</Description>
+    <Description>Local spatial folder workspace.</Description>
     <Authors>OmniBrille Contributors</Authors>
     <Company>OmniBrille Contributors</Company>
     <Copyright>Copyright (c) 2026 OmniBrille Contributors</Copyright>

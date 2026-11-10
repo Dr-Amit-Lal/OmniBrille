@@ -2,11 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OmniBrille.Core\OmniBrille.Core.csproj" />
-    <ProjectReference Include="..\OmniSorSe.ExplorerProtocol\OmniSorSe.ExplorerProtocol.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="NAudio.WinMM" Version="2.3.0" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -14,7 +9,7 @@
     <AssemblyName>OmniBrille.Infrastructure</AssemblyName>
     <RootNamespace>OmniBrille.Infrastructure</RootNamespace>
     <Product>OmniBrille</Product>
-    <Description>Filesystem, preferences, connected-protocol, and local-voice infrastructure for OmniBrille.</Description>
+    <Description>Local filesystem, spatial workspace, and preference storage for OmniBrille.</Description>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

@@ -113,7 +113,7 @@ public sealed class GraphNeighborhoodBuilder
                     return;
                 }
 
-                if (child.Kind != ExplorerNodeKind.Folder || !child.IsNavigable || child.IsReparsePoint ||
+                if (child.Kind != ExplorerNodeKind.Folder || !child.IsNavigable ||
                     !ExplorerIdentity.Equals(child.ParentNavigationTarget, parent.Target) ||
                     !admittedIds.Add(child.Id))
                 {

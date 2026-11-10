@@ -17,17 +17,17 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void CentralVersion_IdentifiesMyFilesPreviewAndMatchesInstallerFallback()
+    public void CentralVersion_IdentifiesSpatialPreviewAndMatchesInstallerFallback()
     {
         var root = FindRepositoryRoot();
         var document = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
         var installer = File.ReadAllText(Path.Combine(root, "installer", "OmniBrille.iss"));
 
         Assert.Equal("1.2.0", document.Descendants("VersionPrefix").Single().Value);
-        Assert.Equal("myfiles.1", document.Descendants("VersionSuffix").Single().Value);
+        Assert.Equal("nebula.8", document.Descendants("VersionSuffix").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("FileVersion").Single().Value);
         Assert.Equal("1.2.0.0", document.Descendants("AssemblyVersion").Single().Value);
-        Assert.Contains("#define AppVersion \"1.2.0-myfiles.1\"", installer, StringComparison.Ordinal);
+        Assert.Contains("#define AppVersion \"1.2.0-nebula.8\"", installer, StringComparison.Ordinal);
         Assert.Contains("#define NumericVersion \"1.2.0.0\"", installer, StringComparison.Ordinal);
         Assert.Equal("OmniBrille", document.Descendants("Product").Single().Value);
         Assert.Equal("MIT", document.Descendants("PackageLicenseExpression").Single().Value);
@@ -39,7 +39,7 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void DesktopExecutable_UsesLocatorCompatibleIdentityAndBrandedAssets()
+    public void DesktopExecutable_UsesStableIdentityAndBrandedAssets()
     {
         var root = FindRepositoryRoot();
         var project = XDocument.Load(Path.Combine(root, "src", "OmniBrille.Desktop", "OmniBrille.Desktop.csproj"));
@@ -51,22 +51,28 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void Installer_IsCurrentUserScopedAtExistingOmniSorSeLocatorPath()
+    public void Installer_IsCurrentUserScopedAtStableInstallPath()
     {
         var script = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "installer", "OmniBrille.iss"));
 
         Assert.Contains("DefaultDirName={localappdata}\\Programs\\OmniBrille", script, StringComparison.Ordinal);
         Assert.Contains("PrivilegesRequired=lowest", script, StringComparison.Ordinal);
+        Assert.Contains("Type: files; Name: \"{autoprograms}\\OmniBrille.lnk\"", script, StringComparison.Ordinal);
+        Assert.Contains("Name: \"{autoprograms}\\OmniBrille Spatial Explorer\"; Filename: \"{app}\\{#AppExeName}\"", script, StringComparison.Ordinal);
         Assert.Contains("OmniBrille.exe", script, StringComparison.Ordinal);
         Assert.Contains("{autoprograms}\\OmniBrille", script, StringComparison.Ordinal);
         Assert.Contains("Excludes: \"*.pdb\"", script, StringComparison.Ordinal);
         Assert.Contains("Type: files; Name: \"{app}\\*.pdb\"", script, StringComparison.Ordinal);
         Assert.Contains("Type: files; Name: \"{app}\\mscordaccore_*.dll\"", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Type: filesandordirs; Name: \"{app}\\*\"", script, StringComparison.Ordinal);
+        Assert.Contains("SafeRetiredPath", script, StringComparison.Ordinal);
+        Assert.Contains("Attributes and $400", script, StringComparison.Ordinal);
+        Assert.Contains("Type: dirifempty; Name: \"{app}\\Voice\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Type: filesandordirs", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OMNISORSE_OMNIBRILLE_PATH", script, StringComparison.Ordinal);
         Assert.DoesNotContain(string.Concat("Omni", "Explorer"), script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(string.Concat("Omni", "Nav"), script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Local-first spatial file explorer", script, StringComparison.Ordinal);
+        Assert.Contains("Open the Spatial Explorer", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -86,7 +92,7 @@ public sealed class PackagingMetadataTests
     }
 
     [Fact]
-    public void RedistributedDependencies_HaveNoticesAndPinnedInstallerOwnedVoiceBundle()
+    public void RedistributedDependencies_HaveNoticesAndLocalWorkspaceOnlyReferences()
     {
         var root = FindRepositoryRoot();
         var infrastructure = XDocument.Load(Path.Combine(
@@ -101,15 +107,14 @@ public sealed class PackagingMetadataTests
             "OmniBrille.Desktop.csproj"));
         var notice = File.ReadAllText(Path.Combine(root, "THIRD-PARTY-NOTICES.txt"));
 
-        Assert.Equal("2.3.0", infrastructure.Descendants("PackageReference")
-            .Single(reference => (string?)reference.Attribute("Include") == "NAudio.WinMM")
-            .Attribute("Version")!.Value);
+        Assert.Empty(infrastructure.Descendants("PackageReference"));
+        Assert.Equal(@"..\OmniBrille.Core\OmniBrille.Core.csproj",
+            (string?)Assert.Single(infrastructure.Descendants("ProjectReference")).Attribute("Include"));
         Assert.Contains("THIRD-PARTY-NOTICES.txt", desktop, StringComparison.Ordinal);
         Assert.Contains("LICENSE", desktop, StringComparison.Ordinal);
         Assert.Contains("THIRD-PARTY-LICENSES", desktop, StringComparison.Ordinal);
         Assert.Contains("SkiaSharp.NativeAssets.Win32\" Version=\"3.119.4\" ExcludeAssets=\"all", desktop, StringComparison.Ordinal);
         Assert.Contains("OmniBrille.SkiaSharp.NativeAssets.Win32.NoDng\" Version=\"3.119.4.3", desktop, StringComparison.Ordinal);
-        Assert.Contains("Copyright 2020 Mark Heath", notice, StringComparison.Ordinal);
         Assert.Contains("Avalonia 12.1.1", notice, StringComparison.Ordinal);
         Assert.Contains("Inter-OFL-1.1.txt", notice, StringComparison.Ordinal);
         Assert.Contains("SkiaSharp-HarfBuzz-THIRD-PARTY-NOTICES.txt", notice, StringComparison.Ordinal);
@@ -137,34 +142,12 @@ public sealed class PackagingMetadataTests
         Assert.True(File.Exists(Path.Combine(root, "THIRD-PARTY-LICENSES", "ANGLE-LICENSE.txt")));
         Assert.True(File.Exists(Path.Combine(root, "THIRD-PARTY-LICENSES", "Inter-OFL-1.1.txt")));
         Assert.True(File.Exists(Path.Combine(root, "THIRD-PARTY-LICENSES", "Tmds.DBus-LICENSE.txt")));
-        Assert.Contains("whisper.cpp v1.9.2 Windows x64 CPU runtime", notice, StringComparison.Ordinal);
-        Assert.Contains("ggml-base.en-q5_1.bin", notice, StringComparison.Ordinal);
-        Assert.Contains("does not download, update, or replace", notice, StringComparison.Ordinal);
-        Assert.True(File.Exists(Path.Combine(root, "THIRD-PARTY-LICENSES", "whisper.cpp-MIT.txt")));
-        Assert.True(File.Exists(Path.Combine(root, "THIRD-PARTY-LICENSES", "OpenAI-Whisper-MIT.txt")));
-        var voiceBundleScript = File.ReadAllText(Path.Combine(root, "build", "Get-VoiceBundle.ps1"));
-        var voiceProvider = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "OmniBrille.Infrastructure",
-            "Voice",
-            "WhisperCliSpeechRecognitionProvider.cs"));
-        Assert.Contains("49DCC16DE826F20BD53D44F947A1AE49DFA81F86CAD67A64D80820CB192D674A", voiceBundleScript, StringComparison.Ordinal);
-        Assert.Contains("4BAF70DD0D7C4247BA2B81FAFD9C01005AC77C2F9EF064E00DCF195D0E2FDD2F", voiceBundleScript, StringComparison.Ordinal);
-        Assert.Contains("/${modelName}?download=true", voiceBundleScript, StringComparison.Ordinal);
-        Assert.Contains("4BAF70DD0D7C4247BA2B81FAFD9C01005AC77C2F9EF064E00DCF195D0E2FDD2F", voiceProvider, StringComparison.Ordinal);
-        var runtimeBlock = System.Text.RegularExpressions.Regex.Match(
-            voiceBundleScript,
-            @"\$runtimeFiles = \[ordered\]@\{(?<content>[\s\S]*?)\r?\n\}");
-        Assert.True(runtimeBlock.Success);
-        var runtimeHashes = System.Text.RegularExpressions.Regex.Matches(
-            runtimeBlock.Groups["content"].Value,
-            "[A-F0-9]{64}")
-            .Select(match => match.Value)
-            .ToArray();
-        Assert.Equal(13, runtimeHashes.Length);
-        Assert.All(runtimeHashes, hash => Assert.Contains(hash, voiceProvider, StringComparison.Ordinal));
-        Assert.Contains("Get-VoiceBundle.ps1", File.ReadAllText(Path.Combine(root, "build", "Package-Windows.ps1")), StringComparison.Ordinal);
+        Assert.DoesNotContain("NAudio", notice, StringComparison.Ordinal);
+        Assert.DoesNotContain("whisper", notice, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(root, "build", "Get-VoiceBundle.ps1")));
+        Assert.False(Directory.Exists(Path.Combine(root, "src", "OmniSorSe.ExplorerProtocol")));
+        Assert.Contains("Retired voice or connected payload", File.ReadAllText(
+            Path.Combine(root, "build", "Package-Windows.ps1")), StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

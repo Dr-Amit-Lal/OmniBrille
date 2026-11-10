@@ -1,5 +1,21 @@
 # Compatibility
 
+Current custom preview: **1.2.0-nebula.8**. The supported package target is Windows x64; actual qualification belongs to the exact artifact's recorded checks.
+
+| Area | Current contract / evidence limit |
+| --- | --- |
+| Product | One local spatial workspace; 8 chosen roots, 12 independent pins, bounded Search/preview/navigation |
+| Existing settings | One-time explicit roots/pins migration when spatial-workspace.json is absent; old files retained |
+| Windows installer | Per-user, self-contained, unsigned preview, stable install identity; no native acceptance claimed here |
+| Native cloud folders | Path classification supports recognized placeholders subject to availability; installed OneDrive hydration requires separate testing |
+| Linux / macOS | Source portability and any CI results do not establish interactive runtime support |
+| OmniSorSe / voice / Context / Hybrid | Removed from this custom version; no host, microphone or audio dependency |
+
+## Historical upstream compatibility
+
+Everything below is retained upstream release evidence/policy, not a current nebula.8 capability or qualification claim. References to “current source” in this retained section mean the upstream source at the time of that record.
+
+
 OmniBrille uses capability negotiation and Explorer Protocol major-version validation rather than requiring lockstep application versions. This matrix records tested combinations; it is not a claim about untested releases.
 
 | OmniBrille | OmniSorSe | Explorer Protocol | Platform | Status |

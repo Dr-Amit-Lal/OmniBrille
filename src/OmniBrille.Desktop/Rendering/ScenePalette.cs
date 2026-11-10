@@ -18,19 +18,34 @@ internal sealed record ScenePalette(
     Color Selection)
 {
     public static ScenePalette Dark { get; } = new(
-        Color.Parse("#030B1A"),
-        Color.Parse("#214E78"),
-        Color.Parse("#268FD2"),
-        Color.Parse("#30C8FF"),
+        Color.Parse("#080D17"),
+        Color.Parse("#8496BC"),
+        Color.Parse("#7288AF"),
+        Color.Parse("#8CAFE8"),
         Color.Parse("#52D9FF"),
         Color.Parse("#75F1FF"),
-        Color.Parse("#75CFFF"),
-        Color.Parse("#3B769F"),
-        Color.Parse("#EAFBFF"),
-        Color.Parse("#7CFAFF"),
-        Color.Parse("#EAF7FF"),
-        Color.Parse("#7EA4C5"),
-        Color.Parse("#32C8FF"));
+        Color.Parse("#8AB8F5"),
+        Color.Parse("#91A7CC"),
+        Color.Parse("#EFF4FF"),
+        Color.Parse("#B8F5DF"),
+        Color.Parse("#E3EAF7"),
+        Color.Parse("#99ABC7"),
+        Color.Parse("#B2C8FF"));
+
+    // These are presentation accents for existing containment branches, not
+    // inferred topics or Context relationships. Keep them bright enough over
+    // the maximum atmospheric wash, including MinimumInteractiveOpacity.
+    internal static IReadOnlyList<Color> NebulaAccents { get; } = Array.AsReadOnly(new[]
+    {
+        Color.Parse("#8AB8F5"),
+        Color.Parse("#B6A1F4"),
+        Color.Parse("#70CEC8"),
+        Color.Parse("#E7BB78"),
+    });
+
+    internal static Color NebulaWash { get; } = Color.Parse("#142038");
+
+    internal static Color NebulaVioletWash { get; } = Color.Parse("#242338");
 
     public static ScenePalette Light { get; } = new(
         Color.Parse("#EAF5FF"),
