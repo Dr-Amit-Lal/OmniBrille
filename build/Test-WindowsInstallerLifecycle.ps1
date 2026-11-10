@@ -271,6 +271,7 @@ Wait-ForSavedWorkspace -ApplicationProcessToCheck $applicationProcess -Workspace
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class OmniBrilleDockProbe {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int Size; public RECT Monitor, Work; public uint Flags; }
@@ -284,6 +285,23 @@ public static class OmniBrilleDockProbe {
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    private delegate bool EnumCallback(IntPtr window, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumCallback callback, IntPtr data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int maxCount);
+    public static string DescribeWindows(uint processId) {
+        var result = new StringBuilder();
+        EnumWindows((window, data) => {
+            uint owner;
+            GetWindowThreadProcessId(window, out owner);
+            if (owner == processId) {
+                var title = new StringBuilder(256);
+                GetWindowText(window, title, title.Capacity);
+                result.AppendFormat("[handle={0}, visible={1}, iconic={2}, title={3}] ", window, IsWindowVisible(window), IsIconic(window), title);
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result.ToString();
+    }
 }
 '@
 $mainHandle = $applicationProcess.MainWindowHandle
@@ -301,7 +319,9 @@ do {
   }
 } until (($dockHandle -ne [IntPtr]::Zero -and [OmniBrilleDockProbe]::IsIconic($mainHandle)) -or (Get-Date) -gt $deadline)
 if ($dockHandle -eq [IntPtr]::Zero -or -not [OmniBrilleDockProbe]::IsIconic($mainHandle)) {
-  throw 'Minimizing the installed app did not expose the edge tab.'
+  $applicationProcess.Refresh()
+  $windows = [OmniBrilleDockProbe]::DescribeWindows([uint32]$applicationProcess.Id)
+  throw "Minimizing the installed app did not expose the edge tab. Main iconic: $([OmniBrilleDockProbe]::IsIconic($mainHandle)); process exited: $($applicationProcess.HasExited); candidate: $candidate; candidate PID: $candidatePid; windows: $windows"
 }
 $dockRect = [OmniBrilleDockProbe+RECT]::new()
 $clientRect = [OmniBrilleDockProbe+RECT]::new()

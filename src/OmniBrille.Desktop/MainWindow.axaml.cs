@@ -82,7 +82,7 @@ public sealed partial class MainWindow : Window, IDisposable
         SearchResultsList.AddHandler(KeyDownEvent, OnSearchResultsKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
         SearchBox.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
         SizeChanged += (_, _) => UpdateView();
-        Activated += (_, _) => { RememberEdgeDockScreen(); _edgeDock?.Hide(); GraphScene.SetMotionActivity(true); };
+        Activated += OnEdgeActivated;
         Deactivated += OnEdgeDeactivated;
         PropertyChanged += OnEdgeWindowStateChanged;
         PositionChanged += OnEdgePositionChanged;
